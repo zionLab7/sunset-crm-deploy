@@ -123,12 +123,7 @@ export default function LoginPage() {
                             )}
                         </Button>
                     </form>
-                    <div className="mt-6 pt-6 border-t border-gray-200 text-center text-sm text-muted-foreground">
-                        <p>Credenciais de teste:</p>
-                        <p className="font-mono text-xs mt-2">
-                            admin@sunset.com / 123456
-                        </p>
-                    </div>
+
                 </CardContent>
             </Card>
         </div>
