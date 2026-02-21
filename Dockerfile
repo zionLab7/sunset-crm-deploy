@@ -39,8 +39,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Install Prisma CLI for migrations in production
+# Install Prisma CLI for migrations and bcryptjs for seed
 RUN npm install -g prisma@6 tsx
+RUN npm install bcryptjs
 
 COPY --from=builder /app/public ./public
 

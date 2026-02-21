@@ -9,7 +9,7 @@ services:
       - DATABASE_URL=postgresql://sunset_user:sunset_password@db:5432/sunset_db?schema=public
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.sunset-crm.rule=Host(`crm.zionlab.cloud`)"
+      - "traefik.http.routers.sunset-crm.rule=Host(`app.crmsunset.cloud`)"
       - "traefik.http.routers.sunset-crm.entrypoints=websecure"
       - "traefik.http.routers.sunset-crm.tls.certresolver=leresolver"
       - "traefik.http.services.sunset-crm.loadbalancer.server.port=3000"
