@@ -7,6 +7,7 @@ import { toast } from "@/hooks/use-toast";
 import { DropResult } from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
 import { Plus, Settings } from "lucide-react";
+import { SaleModal } from "@/components/pipeline/SaleModal";
 
 interface Client {
     id: string;
@@ -16,26 +17,30 @@ interface Client {
     currentStageId: string;
 }
 
-interface PipelineStage {
-    id: string;
-    name: string;
-    color: string;
-    order: number;
-}
-
 interface Column {
     id: string;
     name: string;
     color: string;
+    isClosedStage: boolean;
     clients: Client[];
+}
+
+// Pending move — held until SaleModal is confirmed/cancelled
+interface PendingMove {
+    clientId: string;
+    clientName: string;
+    newStageId: string;
+    stageName: string;
+    result: DropResult;
 }
 
 export default function PipelinePage() {
     const router = useRouter();
     const [columns, setColumns] = useState<Column[]>([]);
     const [loading, setLoading] = useState(true);
+    const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+    const [saleModalOpen, setSaleModalOpen] = useState(false);
 
-    // Buscar dados iniciais
     useEffect(() => {
         fetchData();
     }, []);
@@ -44,7 +49,6 @@ export default function PipelinePage() {
         try {
             const response = await fetch("/api/pipeline");
             const data = await response.json();
-
             setColumns(data.columns || []);
         } catch (error) {
             toast({
@@ -57,33 +61,34 @@ export default function PipelinePage() {
         }
     };
 
-    const handleDragEnd = async (result: DropResult) => {
+    const executeMove = async (
+        result: DropResult,
+        saleData?: {
+            productId: string;
+            productName: string;
+            quantity: number;
+            saleValue: number;
+            notes: string;
+        }
+    ) => {
         const { destination, source, draggableId } = result;
-
-        // Não fez nada
         if (!destination) return;
 
-        // Mesma posição
-        if (
-            destination.droppableId === source.droppableId &&
-            destination.index === source.index
-        ) {
-            return;
-        }
+        // Find the moved client name
+        const sourceCol = columns.find((c) => c.id === source.droppableId);
+        const destCol = columns.find((c) => c.id === destination.droppableId);
+        if (!sourceCol || !destCol) return;
 
-        // Atualizar UI otimisticamente
-        const newColumns = [...columns];
-        const sourceColumn = newColumns.find((c) => c.id === source.droppableId);
-        const destColumn = newColumns.find((c) => c.id === destination.droppableId);
+        const movedClient = sourceCol.clients[source.index];
 
-        if (!sourceColumn || !destColumn) return;
-
-        const [movedClient] = sourceColumn.clients.splice(source.index, 1);
-        destColumn.clients.splice(destination.index, 0, movedClient);
-
+        // Optimistic UI update
+        const newColumns = columns.map((col) => ({ ...col, clients: [...col.clients] }));
+        const newSrc = newColumns.find((c) => c.id === source.droppableId)!;
+        const newDest = newColumns.find((c) => c.id === destination.droppableId)!;
+        const [removed] = newSrc.clients.splice(source.index, 1);
+        newDest.clients.splice(destination.index, 0, removed);
         setColumns(newColumns);
 
-        // Atualizar no backend
         try {
             const response = await fetch("/api/pipeline/move", {
                 method: "POST",
@@ -91,17 +96,24 @@ export default function PipelinePage() {
                 body: JSON.stringify({
                     clientId: draggableId,
                     newStageId: destination.droppableId,
+                    saleData: saleData || null,
                 }),
             });
 
             if (!response.ok) throw new Error();
 
-            toast({
-                title: "✅ Cliente movido!",
-                description: `${movedClient.name} agora está em ${destColumn.name}`,
-            });
+            if (saleData) {
+                toast({
+                    title: "🎉 Venda registrada!",
+                    description: `${movedClient.name} — U$ ${saleData.saleValue.toFixed(2)} em ${destCol.name}`,
+                });
+            } else {
+                toast({
+                    title: "✅ Cliente movido!",
+                    description: `${movedClient.name} agora está em ${destCol.name}`,
+                });
+            }
         } catch (error) {
-            // Reverter mudança em caso de erro
             fetchData();
             toast({
                 variant: "destructive",
@@ -109,6 +121,57 @@ export default function PipelinePage() {
                 description: "A mudança foi revertida.",
             });
         }
+    };
+
+    const handleDragEnd = async (result: DropResult) => {
+        const { destination, source, draggableId } = result;
+
+        if (!destination) return;
+        if (
+            destination.droppableId === source.droppableId &&
+            destination.index === source.index
+        ) return;
+
+        const destColumn = columns.find((c) => c.id === destination.droppableId);
+        const sourceColumn = columns.find((c) => c.id === source.droppableId);
+        if (!destColumn || !sourceColumn) return;
+
+        const movedClient = sourceColumn.clients[source.index];
+
+        // If moving to a closed stage, intercept and show sale modal
+        if (destColumn.isClosedStage) {
+            setPendingMove({
+                clientId: draggableId,
+                clientName: movedClient.name,
+                newStageId: destination.droppableId,
+                stageName: destColumn.name,
+                result,
+            });
+            setSaleModalOpen(true);
+            return;
+        }
+
+        // Otherwise, execute move directly
+        await executeMove(result);
+    };
+
+    const handleSaleConfirm = async (saleData: {
+        productId: string;
+        productName: string;
+        quantity: number;
+        saleValue: number;
+        notes: string;
+    }) => {
+        if (!pendingMove) return;
+        setSaleModalOpen(false);
+        await executeMove(pendingMove.result, saleData);
+        setPendingMove(null);
+    };
+
+    const handleSaleCancel = () => {
+        setSaleModalOpen(false);
+        setPendingMove(null);
+        // No move, no state change needed (optimistic update not done for closed stage)
     };
 
     const handleArchive = async (clientId: string, clientName: string) => {
@@ -119,7 +182,6 @@ export default function PipelinePage() {
 
             if (!response.ok) throw new Error();
 
-            // Remover cliente da UI
             setColumns((prev) =>
                 prev.map((col) => ({
                     ...col,
@@ -179,6 +241,17 @@ export default function PipelinePage() {
                 </div>
             ) : (
                 <KanbanBoard columns={columns} onDragEnd={handleDragEnd} onArchive={handleArchive} />
+            )}
+
+            {/* Sale Modal — aparece ao mover para estágio fechado */}
+            {pendingMove && (
+                <SaleModal
+                    open={saleModalOpen}
+                    clientName={pendingMove.clientName}
+                    stageName={pendingMove.stageName}
+                    onConfirm={handleSaleConfirm}
+                    onCancel={handleSaleCancel}
+                />
             )}
         </div>
     );

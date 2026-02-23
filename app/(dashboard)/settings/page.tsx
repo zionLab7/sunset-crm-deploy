@@ -2,17 +2,21 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings } from "lucide-react";
 import { CustomFieldsTab } from "@/components/settings/CustomFieldsTab";
 import { UsersTab } from "@/components/settings/UsersTab";
 import { PipelineStagesTab } from "@/components/settings/PipelineStagesTab";
 import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
+import { GoalConfigCard } from "@/components/settings/GoalConfigCard";
 
 function SettingsContent() {
     const searchParams = useSearchParams();
     const initialTab = searchParams.get("tab") || "custom-fields";
     const [activeTab, setActiveTab] = useState(initialTab);
+    const { data: session } = useSession();
+    const isGestor = (session?.user as any)?.role === "GESTOR";
 
     return (
         <div className="flex flex-col gap-6 p-4 md:p-8">
@@ -26,6 +30,9 @@ function SettingsContent() {
                 </div>
                 <Settings className="h-8 w-8 text-muted-foreground" />
             </div>
+
+            {/* Meta Mensal — somente gestor */}
+            {isGestor && <GoalConfigCard />}
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>

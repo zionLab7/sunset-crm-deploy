@@ -26,6 +26,7 @@ import { toast } from "@/hooks/use-toast";
 const productSchema = z.object({
     name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
     stockCode: z.string().min(1, "Código do estoque é obrigatório"),
+    costPrice: z.string().optional(),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -42,92 +43,70 @@ interface ProductModalProps {
     open: boolean;
     onClose: () => void;
     onSuccess: () => void;
+    userRole?: string;
     initialData?: {
         id?: string;
         name: string;
         stockCode: string;
+        costPrice?: number | null;
         customFieldValues?: Array<{
             customFieldId: string;
             value: string;
-            customField: {
-                id: string;
-                name: string;
-            };
+            customField: { id: string; name: string };
         }>;
     };
 }
 
-export function ProductModal({
-    open,
-    onClose,
-    onSuccess,
-    initialData,
-}: ProductModalProps) {
+export function ProductModal({ open, onClose, onSuccess, userRole, initialData }: ProductModalProps) {
     const [loading, setLoading] = useState(false);
     const [customFields, setCustomFields] = useState<CustomField[]>([]);
     const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
 
-    const {
-        register,
-        handleSubmit,
-        reset,
-        formState: { errors },
-    } = useForm<ProductFormData>({
+    const isGestor = userRole === "GESTOR";
+
+    const { register, handleSubmit, reset, formState: { errors } } = useForm<ProductFormData>({
         resolver: zodResolver(productSchema),
         defaultValues: {
             name: initialData?.name || "",
             stockCode: initialData?.stockCode || "",
+            costPrice: initialData?.costPrice?.toString() || "",
         },
     });
 
-    // Buscar campos customizados para produtos
     useEffect(() => {
-        const fetchCustomFields = async () => {
-            try {
-                const res = await fetch("/api/custom-fields?entityType=PRODUCT");
-                const data = await res.json();
-                setCustomFields(data.customFields || []);
-            } catch (error) {
-                console.error("Erro ao buscar campos customizados:", error);
-            }
-        };
-
-        if (open) {
-            fetchCustomFields();
-        }
+        if (!open) return;
+        fetch("/api/custom-fields?entityType=PRODUCT")
+            .then(r => r.json())
+            .then(d => setCustomFields(d.customFields || []))
+            .catch(() => { });
     }, [open]);
 
-    // Resetar formulário quando abrir/fechar ou mudar dados iniciais
     useEffect(() => {
         if (open) {
             reset({
                 name: initialData?.name || "",
                 stockCode: initialData?.stockCode || "",
+                costPrice: initialData?.costPrice?.toString() || "",
             });
-
-            // Preencher valores dos campos customizados
-            const values: Record<string, string> = {};
-            if (initialData?.customFieldValues) {
-                initialData.customFieldValues.forEach((cfv) => {
-                    values[cfv.customFieldId] = cfv.value;
-                });
-            }
-            setCustomFieldValues(values);
+            const vals: Record<string, string> = {};
+            initialData?.customFieldValues?.forEach(cfv => { vals[cfv.customFieldId] = cfv.value; });
+            setCustomFieldValues(vals);
         }
     }, [open, initialData, reset]);
 
     const onSubmit = async (data: ProductFormData) => {
         setLoading(true);
         try {
-            const payload = {
-                ...data,
+            const payload: any = {
+                name: data.name,
+                stockCode: data.stockCode,
                 customFields: customFieldValues,
             };
+            if (isGestor) {
+                payload.costPrice = data.costPrice ? parseFloat(data.costPrice) : null;
+            }
 
-            const url = initialData?.id
-                ? `/api/products/${initialData.id}`
-                : "/api/products";
-
+            const url = initialData?.id ? `/api/products/${initialData.id}` : "/api/products";
             const method = initialData?.id ? "PATCH" : "POST";
 
             const res = await fetch(url, {
@@ -137,10 +116,7 @@ export function ProductModal({
             });
 
             const responseData = await res.json();
-
-            if (!res.ok) {
-                throw new Error(responseData.error || "Erro ao salvar produto");
-            }
+            if (!res.ok) throw new Error(responseData.error || "Erro ao salvar produto");
 
             toast({
                 title: initialData?.id ? "✅ Produto atualizado!" : "✅ Produto criado!",
@@ -152,11 +128,7 @@ export function ProductModal({
             reset();
             setCustomFieldValues({});
         } catch (error: any) {
-            toast({
-                variant: "destructive",
-                title: "Erro ao salvar produto",
-                description: error.message,
-            });
+            toast({ variant: "destructive", title: "Erro ao salvar produto", description: error.message });
         } finally {
             setLoading(false);
         }
@@ -164,157 +136,102 @@ export function ProductModal({
 
     const renderCustomField = (field: CustomField) => {
         const value = customFieldValues[field.id] || "";
-
-        const handleChange = (newValue: string) => {
-            setCustomFieldValues((prev) => ({
-                ...prev,
-                [field.id]: newValue,
-            }));
-        };
+        const handleChange = (v: string) => setCustomFieldValues(prev => ({ ...prev, [field.id]: v }));
 
         switch (field.fieldType) {
             case "number":
-                return (
-                    <Input
-                        type="number"
-                        value={value}
-                        onChange={(e) => handleChange(e.target.value)}
-                        placeholder={`Ex: ${field.name === "Preço" ? "25.90" : "0"}`}
-                        step={field.name === "Preço" ? "0.01" : "1"}
-                    />
-                );
-
+                return <Input type="number" value={value} onChange={e => handleChange(e.target.value)} placeholder="0" step="0.01" />;
             case "date":
-                return (
-                    <Input
-                        type="date"
-                        value={value}
-                        onChange={(e) => handleChange(e.target.value)}
-                    />
-                );
-
+                return <Input type="date" value={value} onChange={e => handleChange(e.target.value)} />;
             case "select":
-                let options: string[] = [];
-                if (field.options) {
-                    try {
-                        options = JSON.parse(field.options);
-                    } catch {
-                        // Fallback para formato antigo (string separada por vírgula)
-                        options = field.options.split(",").map(opt => opt.trim());
-                    }
-                }
+                let opts: string[] = [];
+                try { opts = JSON.parse(field.options || "[]"); } catch { opts = (field.options || "").split(",").map(o => o.trim()); }
                 return (
                     <Select value={value} onValueChange={handleChange}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Selecione..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {options.map((option: string) => (
-                                <SelectItem key={option} value={option}>
-                                    {option}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectContent>{opts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
                     </Select>
                 );
-
-            default: // text
+            default:
                 if (field.name === "Descrição") {
-                    return (
-                        <Textarea
-                            value={value}
-                            onChange={(e) => handleChange(e.target.value)}
-                            placeholder="Descreva o produto..."
-                            rows={3}
-                        />
-                    );
+                    return <Textarea value={value} onChange={e => handleChange(e.target.value)} placeholder="Descreva o produto..." rows={3} />;
                 }
-                return (
-                    <Input
-                        value={value}
-                        onChange={(e) => handleChange(e.target.value)}
-                        placeholder={`Digite ${field.name.toLowerCase()}...`}
-                    />
-                );
+                return <Input value={value} onChange={e => handleChange(e.target.value)} placeholder={`Digite ${field.name.toLowerCase()}...`} />;
         }
     };
+
+    // Campos customizados visíveis: excluir calculados (exibidos separado) — todos os outros visíveis para qualquer role
+    const visibleCustomFields = customFields.filter(f => f.fieldType !== "calculated");
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
             <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>
-                        {initialData?.id ? "Editar Produto" : "Novo Produto"}
-                    </DialogTitle>
+                    <DialogTitle>{initialData?.id ? "Editar Produto" : "Novo Produto"}</DialogTitle>
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    {/* Campos Fixos */}
+                    {/* Campos fixos — visíveis para todos */}
                     <div>
                         <Label htmlFor="name">Nome do Produto *</Label>
-                        <Input
-                            id="name"
-                            {...register("name")}
-                            placeholder="Ex: Café Premium 1kg"
-                        />
-                        {errors.name && (
-                            <p className="text-sm text-destructive mt-1">
-                                {errors.name.message}
-                            </p>
-                        )}
+                        <Input id="name" {...register("name")} placeholder="Ex: Café Premium 1kg" />
+                        {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
                     </div>
 
                     <div>
                         <Label htmlFor="stockCode">Código do Estoque *</Label>
-                        <Input
-                            id="stockCode"
-                            {...register("stockCode")}
-                            placeholder="Ex: CAF-001"
-                        />
-                        {errors.stockCode && (
-                            <p className="text-sm text-destructive mt-1">
-                                {errors.stockCode.message}
-                            </p>
-                        )}
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Mesmo código do sistema de estoque da empresa
-                        </p>
+                        <Input id="stockCode" {...register("stockCode")} placeholder="Ex: CAF-001" />
+                        {errors.stockCode && <p className="text-sm text-destructive mt-1">{errors.stockCode.message}</p>}
+                        <p className="text-xs text-muted-foreground mt-1">Mesmo código do sistema de estoque da empresa</p>
                     </div>
 
-                    {/* Campos Customizados */}
-                    {customFields.length > 0 && (
+                    {/* Preço de Custo — SOMENTE para Gestores */}
+                    {isGestor && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
+                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                                🔒 Informação de Custo (Gestor)
+                            </p>
+                            <div>
+                                <Label htmlFor="costPrice" className="text-amber-800">Preço de Custo (U$)</Label>
+                                <div className="relative mt-1">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">U$</span>
+                                    <Input
+                                        id="costPrice"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        {...register("costPrice")}
+                                        placeholder="0.00"
+                                        className="pl-10 border-amber-300"
+                                    />
+                                </div>
+                                <p className="text-xs text-amber-600 mt-1">Visível apenas para gestores.</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Campos Customizados — visíveis para TODOS (vendedores inclusive) */}
+                    {visibleCustomFields.length > 0 && (
                         <>
                             <div className="border-t pt-4">
-                                <h4 className="text-sm font-medium mb-3">
-                                    Informações Adicionais
-                                </h4>
+                                <h4 className="text-sm font-medium mb-3">Informações Adicionais</h4>
                             </div>
-
-                            {customFields
-                                .filter((field) => field.fieldType !== "calculated")
-                                .map((field) => (
-                                    <div key={field.id}>
-                                        <Label htmlFor={`custom-${field.id}`}>
-                                            {field.name}
-                                            {field.required && " *"}
-                                        </Label>
-                                        {renderCustomField(field)}
-                                    </div>
-                                ))}
+                            {visibleCustomFields.map(field => (
+                                <div key={field.id}>
+                                    <Label htmlFor={`custom-${field.id}`}>
+                                        {field.name}{field.required && " *"}
+                                    </Label>
+                                    {renderCustomField(field)}
+                                </div>
+                            ))}
                         </>
                     )}
 
                     {/* Ações */}
                     <div className="flex gap-2 justify-end pt-4 border-t">
-                        <Button type="button" variant="outline" onClick={onClose}>
-                            Cancelar
-                        </Button>
+                        <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
                         <Button type="submit" disabled={loading}>
-                            {loading
-                                ? "Salvando..."
-                                : initialData?.id
-                                    ? "Atualizar"
-                                    : "Criar Produto"}
+                            {loading ? "Salvando..." : initialData?.id ? "Atualizar" : "Criar Produto"}
                         </Button>
                     </div>
                 </form>

@@ -132,7 +132,11 @@ export function CustomFieldModal({
                         const numberFields = (data.customFields || []).filter(
                             (f: any) => f.fieldType === "number" && f.id !== initialData?.id
                         );
-                        setSourceFields(numberFields);
+                        // Prepe÷o o campo nativo costPrice como opção com sentinel especial
+                        setSourceFields([
+                            { id: "__costPrice__", name: "🔒 Preço de Custo (nativo)" },
+                            ...numberFields,
+                        ]);
                     })
                     .catch(() => { });
             }
@@ -323,8 +327,8 @@ export function CustomFieldModal({
                                     <SelectContent>
                                         <SelectItem value="percentage_discount">Desconto (%)</SelectItem>
                                         <SelectItem value="percentage_add">Acréscimo (%)</SelectItem>
-                                        <SelectItem value="fixed_discount">Desconto Fixo (R$)</SelectItem>
-                                        <SelectItem value="fixed_add">Acréscimo Fixo (R$)</SelectItem>
+                                        <SelectItem value="fixed_discount">Desconto Fixo (U$)</SelectItem>
+                                        <SelectItem value="fixed_add">Acréscimo Fixo (U$)</SelectItem>
                                         <SelectItem value="multiply">Multiplicar</SelectItem>
                                     </SelectContent>
                                 </Select>

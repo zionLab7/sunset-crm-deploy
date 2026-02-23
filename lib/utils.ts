@@ -6,10 +6,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(value: number): string {
-    return new Intl.NumberFormat('pt-BR', {
+    const formatted = new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'BRL',
+        currency: 'USD',
+        minimumFractionDigits: 2,
     }).format(value);
+    return formatted.replace('$', 'U$');
 }
 
 export function formatCNPJ(cnpj: string): string {

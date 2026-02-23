@@ -8,6 +8,7 @@ import { z } from "zod";
 const productSchema = z.object({
     name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
     stockCode: z.string().min(1, "Código do estoque é obrigatório"),
+    costPrice: z.number().optional().nullable(),
     customFields: z.record(z.string()).optional(),
 });
 
@@ -17,86 +18,51 @@ export async function PATCH(
 ) {
     try {
         const user = await getCurrentUser();
-        if (!user) {
-            return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-        }
+        if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+        if ((user as any).role !== "GESTOR") return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
 
         const body = await request.json();
         const validatedData = productSchema.parse(body);
 
-        // Verificar se código do estoque já existe em outro produto
-        const existingProduct = await prisma.product.findFirst({
-            where: {
-                stockCode: validatedData.stockCode,
-                NOT: { id: params.id },
-            },
+        const duplicate = await prisma.product.findFirst({
+            where: { stockCode: validatedData.stockCode, NOT: { id: params.id } },
         });
-
-        if (existingProduct) {
-            return NextResponse.json(
-                { error: "Código do estoque já existe em outro produto" },
-                { status: 400 }
-            );
+        if (duplicate) {
+            return NextResponse.json({ error: "Código do estoque já existe em outro produto" }, { status: 400 });
         }
 
-        // Atualizar campos fixos
         const product = await prisma.product.update({
             where: { id: params.id },
             data: {
                 name: validatedData.name,
                 stockCode: validatedData.stockCode,
+                costPrice: validatedData.costPrice ?? null,
             },
         });
 
-        // Atualizar campos customizados
-        if (validatedData.customFields) {
-            // Remover valores antigos
-            await prisma.customFieldValue.deleteMany({
-                where: { productId: params.id },
-            });
-
-            // Criar novos valores
-            const customFieldEntries = Object.entries(validatedData.customFields);
-
-            for (const [fieldId, value] of customFieldEntries) {
-                if (value && value.trim() !== "") {
+        if (validatedData.customFields !== undefined) {
+            await prisma.customFieldValue.deleteMany({ where: { productId: params.id } });
+            for (const [fieldId, value] of Object.entries(validatedData.customFields)) {
+                if (value && String(value).trim() !== "") {
                     await prisma.customFieldValue.create({
-                        data: {
-                            customFieldId: fieldId,
-                            productId: product.id,
-                            value: value,
-                        },
+                        data: { customFieldId: fieldId, productId: product.id, value: String(value) },
                     });
                 }
             }
         }
 
-        // Buscar produto completo
         const productWithFields = await prisma.product.findUnique({
             where: { id: product.id },
-            include: {
-                customFieldValues: {
-                    include: {
-                        customField: true,
-                    },
-                },
-            },
+            include: { customFieldValues: { include: { customField: true } } },
         });
 
         return NextResponse.json(productWithFields);
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-            return NextResponse.json(
-                { error: error.errors[0].message },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: error.errors[0].message }, { status: 400 });
         }
-
         console.error("Erro ao atualizar produto:", error);
-        return NextResponse.json(
-            { error: error.message || "Erro ao atualizar produto" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: error.message || "Erro ao atualizar produto" }, { status: 500 });
     }
 }
 
@@ -106,42 +72,25 @@ export async function DELETE(
 ) {
     try {
         const user = await getCurrentUser();
-        if (!user) {
-            return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-        }
+        if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+        if ((user as any).role !== "GESTOR") return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
 
-        // Verificar se produto tem clientes vinculados
-        const productWithClients = await prisma.product.findUnique({
+        const product = await prisma.product.findUnique({
             where: { id: params.id },
-            include: {
-                clients: true,
-            },
+            include: { clients: true },
         });
-
-        if (!productWithClients) {
+        if (!product) return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
+        if (product.clients.length > 0) {
             return NextResponse.json(
-                { error: "Produto não encontrado" },
-                { status: 404 }
-            );
-        }
-
-        if (productWithClients.clients.length > 0) {
-            return NextResponse.json(
-                { error: `Não é possível excluir produto vinculado a ${productWithClients.clients.length} cliente(s)` },
+                { error: `Não é possível excluir produto vinculado a ${product.clients.length} cliente(s)` },
                 { status: 400 }
             );
         }
 
-        await prisma.product.delete({
-            where: { id: params.id },
-        });
-
+        await prisma.product.delete({ where: { id: params.id } });
         return NextResponse.json({ success: true });
     } catch (error: any) {
         console.error("Erro ao excluir produto:", error);
-        return NextResponse.json(
-            { error: error.message || "Erro ao excluir produto" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: error.message || "Erro ao excluir produto" }, { status: 500 });
     }
 }

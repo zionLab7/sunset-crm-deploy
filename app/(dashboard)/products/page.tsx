@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Package, Search, Edit, Trash2 } from "lucide-react";
+import { Plus, Package, Search, Edit, Trash2, Lock } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/use-confirm";
 import { formatCurrency } from "@/lib/utils";
@@ -22,6 +23,7 @@ interface Product {
     id: string;
     name: string;
     stockCode: string;
+    costPrice?: number | null;  // Preço de custo (nativo, somente gestor)
     clients: Array<{ client: { id: string; name: string } }>;
     customFieldValues: Array<{
         customFieldId: string;
@@ -35,6 +37,7 @@ interface Product {
 }
 
 export default function ProductsPage() {
+    const { data: session } = useSession();
     const { confirm, ConfirmDialog } = useConfirm();
     const [products, setProducts] = useState<Product[]>([]);
     const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>([]);
@@ -42,6 +45,8 @@ export default function ProductsPage() {
     const [search, setSearch] = useState("");
     const [modalOpen, setModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+    const isGestor = (session?.user as any)?.role === "GESTOR";
 
     useEffect(() => {
         fetchProducts();
@@ -89,9 +94,7 @@ export default function ProductsPage() {
             confirmText: "Excluir",
         });
 
-        if (!confirmed) {
-            return;
-        }
+        if (!confirmed) return;
 
         try {
             const res = await fetch(`/api/products/${product.id}`, {
@@ -119,7 +122,6 @@ export default function ProductsPage() {
         }
     };
 
-    // Helper para obter valor de um campo customizado
     const getCustomFieldValue = (product: Product, fieldName: string): string | null => {
         const field = product.customFieldValues.find(
             (cfv) => cfv.customField.name === fieldName
@@ -127,17 +129,24 @@ export default function ProductsPage() {
         return field ? field.value : null;
     };
 
-    // Computa o valor de um campo calculado
     const computeCalculatedValue = (product: Product, fieldDef: CustomFieldDef): string | null => {
         if (!fieldDef.formula) return null;
         try {
             const formula = JSON.parse(fieldDef.formula);
-            const sourceValue = product.customFieldValues.find(
-                (cfv) => cfv.customFieldId === formula.sourceField
-            );
-            if (!sourceValue) return null;
-            const numValue = parseFloat(sourceValue.value);
-            if (isNaN(numValue)) return null;
+
+            // Suporte ao campo nativo costPrice via sentinel especial
+            let numValue: number;
+            if (formula.sourceField === "__costPrice__") {
+                if (product.costPrice == null) return null;
+                numValue = product.costPrice;
+            } else {
+                const sourceValue = product.customFieldValues.find(
+                    (cfv) => cfv.customFieldId === formula.sourceField
+                );
+                if (!sourceValue) return null;
+                numValue = parseFloat(sourceValue.value);
+                if (isNaN(numValue)) return null;
+            }
 
             let result: number;
             switch (formula.operation) {
@@ -183,10 +192,12 @@ export default function ProductsPage() {
                         Gerencie seu catálogo de produtos
                     </p>
                 </div>
-                <Button onClick={handleNewProduct}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Novo Produto
-                </Button>
+                {isGestor && (
+                    <Button onClick={handleNewProduct}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Novo Produto
+                    </Button>
+                )}
             </div>
 
             {/* Busca */}
@@ -214,7 +225,7 @@ export default function ProductsPage() {
                         <p className="text-sm text-muted-foreground mb-4">
                             {search ? "Tente outro termo de busca" : "Comece adicionando seu primeiro produto"}
                         </p>
-                        {!search && (
+                        {!search && isGestor && (
                             <Button onClick={handleNewProduct}>
                                 <Plus className="h-4 w-4 mr-2" />
                                 Adicionar Produto
@@ -225,7 +236,6 @@ export default function ProductsPage() {
             ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {products.map((product) => {
-                        const preco = getCustomFieldValue(product, "Preço");
                         const descricao = getCustomFieldValue(product, "Descrição");
 
                         return (
@@ -239,31 +249,39 @@ export default function ProductsPage() {
                                             Código: {product.stockCode}
                                         </p>
                                     </div>
-                                    <div className="flex gap-1">
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            onClick={() => handleEditProduct(product)}
-                                        >
-                                            <Edit className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            onClick={() => handleDeleteProduct(product)}
-                                        >
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                        </Button>
-                                    </div>
+                                    {/* Botões de edição somente para gestor */}
+                                    {isGestor ? (
+                                        <div className="flex gap-1">
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                onClick={() => handleEditProduct(product)}
+                                            >
+                                                <Edit className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                onClick={() => handleDeleteProduct(product)}
+                                            >
+                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                            </Button>
+                                        </div>
+                                    ) : (
+                                        <Lock className="h-4 w-4 text-muted-foreground mt-1" />
+                                    )}
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3">
-                                        {preco && (
-                                            <div>
-                                                <p className="text-2xl font-bold text-primary">
-                                                    {formatCurrency(parseFloat(preco))}
-                                                </p>
-                                                <p className="text-xs text-muted-foreground">Preço unitário</p>
+                                        {/* Preço de custo — somente gestor */}
+                                        {isGestor && product.costPrice != null && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-medium text-amber-700">Custo:</span>
+                                                    <span className="text-sm font-bold text-amber-900">
+                                                        {formatCurrency(product.costPrice)}
+                                                    </span>
+                                                </div>
                                             </div>
                                         )}
 
@@ -313,16 +331,19 @@ export default function ProductsPage() {
                 </div>
             )}
 
-            {/* Modal de Produto */}
-            <ProductModal
-                open={modalOpen}
-                onClose={() => {
-                    setModalOpen(false);
-                    setSelectedProduct(null);
-                }}
-                onSuccess={fetchProducts}
-                initialData={selectedProduct || undefined}
-            />
+            {/* Modal de Produto — somente gestor pode abrir */}
+            {isGestor && (
+                <ProductModal
+                    open={modalOpen}
+                    onClose={() => {
+                        setModalOpen(false);
+                        setSelectedProduct(null);
+                    }}
+                    onSuccess={fetchProducts}
+                    initialData={selectedProduct || undefined}
+                    userRole="GESTOR"
+                />
+            )}
 
             <ConfirmDialog />
         </div>

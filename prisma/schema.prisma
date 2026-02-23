@@ -127,6 +127,7 @@ model Product {
   id                String   @id @default(cuid())
   name              String
   stockCode         String   @unique  // Código do estoque
+  costPrice         Float?            // Preço de custo (visível apenas para gestores)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   

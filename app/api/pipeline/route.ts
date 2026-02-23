@@ -35,6 +35,7 @@ export async function GET() {
             id: stage.id,
             name: stage.name,
             color: stage.color,
+            isClosedStage: stage.isClosedStage,
             clients: clients
                 .filter((c) => c.currentStageId === stage.id)
                 .map((c) => ({
