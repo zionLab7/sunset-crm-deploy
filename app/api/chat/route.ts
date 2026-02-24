@@ -115,14 +115,28 @@ async function getBusinessContext() {
 
     // ============ BUILD CONTEXT ============
 
+    // Helper: extrai saleValue real de um cliente via metadata das interações
+    function getRealSaleValue(interactions: Array<{ metadata: string | null }>, potentialValue: number): number {
+        for (const i of interactions) {
+            if (i.metadata) {
+                try {
+                    const meta = JSON.parse(i.metadata);
+                    if (meta.saleValue != null) return parseFloat(String(meta.saleValue));
+                } catch { /* ignora JSON inválido */ }
+            }
+        }
+        return potentialValue; // fallback para dados sem modal
+    }
+
     // Sellers with per-client timeline
     const sellersContext = sellers.map((s) => {
         const totalClients = s.clients.length;
         const closedClients = s.clients.filter((c) =>
             closedStageIds.includes(c.currentStageId)
         );
+        // Usa saleValue real; fallback para potentialValue
         const totalRevenue = closedClients.reduce(
-            (sum, c) => sum + c.potentialValue, 0
+            (sum, c) => sum + getRealSaleValue(c.interactions, c.potentialValue), 0
         );
         const pendingTasks = s.tasks.filter((t) => t.status === "PENDENTE").length;
         const overdue = s.tasks.filter(
@@ -131,18 +145,23 @@ async function getBusinessContext() {
         const completedTasks = s.tasks.filter((t) => t.status === "CONCLUIDA").length;
 
         // Per-client summary for this seller
-        const clientsSummary = s.clients.map((c) => ({
-            nome: c.name,
-            estagio: c.currentStage.name,
-            valorPotencial: c.potentialValue,
-            ultimaInteracao: c.interactions.length > 0
-                ? c.interactions[0].createdAt.toISOString().split("T")[0]
-                : "Nunca",
-            tipoUltimaInteracao: c.interactions.length > 0
-                ? c.interactions[0].type : null,
-            totalInteracoes: c.interactions.length,
-            produtos: c.products.map((p) => p.product.name),
-        }));
+        const clientsSummary = s.clients.map((c) => {
+            const isClosed = closedStageIds.includes(c.currentStageId);
+            const realValue = isClosed ? getRealSaleValue(c.interactions, c.potentialValue) : null;
+            return {
+                nome: c.name,
+                estagio: c.currentStage.name,
+                valorPotencial: c.potentialValue,
+                valorVendaRegistrado: realValue, // null = não aplicável (não fechado)
+                ultimaInteracao: c.interactions.length > 0
+                    ? c.interactions[0].createdAt.toISOString().split("T")[0]
+                    : "Nunca",
+                tipoUltimaInteracao: c.interactions.length > 0
+                    ? c.interactions[0].type : null,
+                totalInteracoes: c.interactions.length,
+                produtos: c.products.map((p) => p.product.name),
+            };
+        });
 
         // Recent interactions timeline
         const timeline = s.interactions.slice(0, 10).map((i) => ({
@@ -160,13 +179,18 @@ async function getBusinessContext() {
             cliente: t.client?.name || "Sem cliente",
         }));
 
+        const progressoMeta = s.monthlyGoal > 0
+            ? `${((totalRevenue / s.monthlyGoal) * 100).toFixed(1)}%`
+            : "Meta não definida";
+
         return {
             nome: s.name,
             email: s.email,
             metaMensal: s.monthlyGoal,
+            progressoMeta,
             totalClientes: totalClients,
             clientesFechados: closedClients.length,
-            receitaTotal: totalRevenue,
+            receitaRealTotal: totalRevenue, // baseado em saleValue registrado
             tarefasPendentes: pendingTasks,
             tarefasAtrasadas: overdue,
             tarefasConcluidas: completedTasks,
@@ -184,30 +208,44 @@ async function getBusinessContext() {
     }));
 
     // Full client records
-    const clientsContext = allClients.map((c) => ({
-        nome: c.name,
-        cnpj: c.cnpj || "Não informado",
-        telefone: c.phone || "Não informado",
-        email: c.email || "Não informado",
-        vendedor: c.assignedUser?.name || "Sem vendedor",
-        faseAtual: c.currentStage.name,
-        valorPotencial: c.potentialValue,
-        criadoEm: c.createdAt.toISOString().split("T")[0],
-        produtos: c.products.map((p) => p.product.name),
-        camposCustomizados: c.customFieldValues.map((cfv) => ({
-            campo: cfv.customField.name,
-            valor: cfv.value,
-        })),
-        interacoes: c.interactions.map((i) => ({
-            data: i.createdAt.toISOString().split("T")[0],
-            tipo: i.type,
-            responsavel: i.user?.name || "Sistema",
-            descricao: i.description?.substring(0, 150) || "",
-        })),
-        ultimaInteracao: c.interactions.length > 0
-            ? c.interactions[0].createdAt.toISOString().split("T")[0]
-            : "Nunca",
-    }));
+    const clientsContext = allClients.map((c) => {
+        const isClosed = closedStageIds.includes(c.currentStageId);
+        const realSaleValue = isClosed
+            ? (() => {
+                for (const i of c.interactions) {
+                    if (i.metadata) {
+                        try { const m = JSON.parse(i.metadata); if (m.saleValue != null) return parseFloat(String(m.saleValue)); } catch { }
+                    }
+                }
+                return c.potentialValue;
+            })()
+            : null;
+        return {
+            nome: c.name,
+            cnpj: c.cnpj || "Não informado",
+            telefone: c.phone || "Não informado",
+            email: c.email || "Não informado",
+            vendedor: c.assignedUser?.name || "Sem vendedor",
+            faseAtual: c.currentStage.name,
+            valorPotencial: c.potentialValue,
+            valorVendaRegistrado: realSaleValue, // null = não fechado; número = valor real da venda
+            criadoEm: c.createdAt.toISOString().split("T")[0],
+            produtos: c.products.map((p) => p.product.name),
+            camposCustomizados: c.customFieldValues.map((cfv) => ({
+                campo: cfv.customField.name,
+                valor: cfv.value,
+            })),
+            interacoes: c.interactions.map((i) => ({
+                data: i.createdAt.toISOString().split("T")[0],
+                tipo: i.type,
+                responsavel: i.user?.name || "Sistema",
+                descricao: i.description?.substring(0, 150) || "",
+            })),
+            ultimaInteracao: c.interactions.length > 0
+                ? c.interactions[0].createdAt.toISOString().split("T")[0]
+                : "Nunca",
+        };
+    });
 
     // Inactive clients
     const inactiveClients = allClients
@@ -243,14 +281,24 @@ async function getBusinessContext() {
         })),
     }));
 
-    // General KPIs
+    // General KPIs — usa saleValue real, fallback potentialValue
     const totalClients = allClients.length;
-    const closedClientsCount = allClients.filter((c) =>
+    const closedClients = allClients.filter((c) =>
         closedStageIds.includes(c.currentStageId)
-    ).length;
-    const totalRevenue = allClients
-        .filter((c) => closedStageIds.includes(c.currentStageId))
-        .reduce((sum, c) => sum + c.potentialValue, 0);
+    );
+    const closedClientsCount = closedClients.length;
+    const totalRevenue = closedClients
+        .reduce((sum, c) => {
+            for (const i of c.interactions) {
+                if (i.metadata) {
+                    try {
+                        const meta = JSON.parse(i.metadata);
+                        if (meta.saleValue != null) return sum + parseFloat(String(meta.saleValue));
+                    } catch { /* ignora */ }
+                }
+            }
+            return sum + c.potentialValue;
+        }, 0);
     const conversionRate =
         totalClients > 0
             ? ((closedClientsCount / totalClients) * 100).toFixed(1)
@@ -260,16 +308,35 @@ async function getBusinessContext() {
             ? (totalRevenue / closedClientsCount).toFixed(2)
             : "0";
 
+    // Progresso em relação à meta do gestor
+    const gestorGoal = gestores.length > 0 ? gestores.reduce((max, g) => Math.max(max, g.monthlyGoal), 0) : 0;
+    const goalProgress = gestorGoal > 0
+        ? `U$ ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })} de U$ ${gestorGoal.toLocaleString("en-US", { minimumFractionDigits: 2 })} (${((totalRevenue / gestorGoal) * 100).toFixed(1)}%)`
+        : "Meta mensal não definida";
+    const goalRemaining = gestorGoal > 0
+        ? Math.max(0, gestorGoal - totalRevenue)
+        : null;
+
     return `
 === DADOS COMPLETOS DA EMPRESA SUNSET DISTRIBUIDORA ===
 Data atual: ${now.toISOString().split("T")[0]}
 
+IMPORTANTE: Os valores de receita são baseados no VALOR REAL registrado no modal de venda pelo vendedor.
+Se não houver valor registrado (vendas antigas ou migradas), utiliza-se o valor potencial como estimativa.
+A moeda utilizada é U$ (dólar americano).
+
+--- META MENSAL E PROGRESSO ---
+Meta Mensal da Empresa: U$ ${gestorGoal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+Receita Realizada (vendas fechadas): U$ ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+Progresso em relação à meta: ${goalProgress}
+${goalRemaining !== null ? `Falta para atingir a meta: U$ ${goalRemaining.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : ""}
+
 --- KPIs GERAIS ---
 Total de Clientes: ${totalClients}
 Clientes com Venda Fechada: ${closedClientsCount}
-Receita Total (vendas fechadas): R$ ${totalRevenue.toLocaleString("pt-BR")}
+Receita Total (baseada em vendas registradas): U$ ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
 Taxa de Conversão: ${conversionRate}%
-Ticket Médio: R$ ${avgTicket}
+Ticket Médio: U$ ${avgTicket}
 Interações nos últimos 30 dias: ${recentInteractions}
 Tarefas atrasadas: ${overdueTasks.length}
 
@@ -291,7 +358,7 @@ ${JSON.stringify(overdueContext, null, 2)}
 --- PRODUTOS (com campos customizados) ---
 ${JSON.stringify(productsContext, null, 2)}
 
---- GESTORES ---
+--- GESTORES E METAS ---
 ${JSON.stringify(gestores, null, 2)}
 `;
 }
@@ -307,7 +374,9 @@ Seu papel:
 - Ser direto, objetivo e usar linguagem profissional em português brasileiro
 - Formatar respostas com markdown quando apropriado (negrito, listas, tabelas)
 - Nunca inventar dados. Se não tiver a informação, diga claramente
-- Ao mencionar valores monetários, use o formato brasileiro (R$ X.XXX,XX)
+- Ao mencionar valores monetários, use sempre U$ (dólar americano), formato: U$ X,XXX.XX
+- Os valores de receita são baseados no valor REAL registrado na venda (não o potencial estimado)
+- Sempre que perguntado sobre progresso da meta, informe o percentual atingido e quanto falta
 
 Capacidades especiais:
 - Pode responder sobre QUALQUER cliente específico (dados, interações, produtos, valor, estágio)
