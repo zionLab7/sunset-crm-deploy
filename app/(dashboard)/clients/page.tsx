@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,7 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, MessageCircle, FileSpreadsheet } from "lucide-react";
+import { Plus, Search, MessageCircle, FileSpreadsheet, Trash2 } from "lucide-react";
 import { formatCurrency, formatCNPJ, getWhatsAppLink } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ImportClientsModal } from "@/components/clients/import-clients-modal";
@@ -49,6 +50,8 @@ interface PipelineStage {
 
 export default function ClientsPage() {
     const router = useRouter();
+    const { data: session } = useSession();
+    const isGestor = (session?.user as any)?.role === "GESTOR";
     const [clients, setClients] = useState<Client[]>([]);
     const [stages, setStages] = useState<PipelineStage[]>([]);
     const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
@@ -56,6 +59,7 @@ export default function ClientsPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedStage, setSelectedStage] = useState<string>("all");
     const [importModalOpen, setImportModalOpen] = useState(false);
+
 
     useEffect(() => {
         fetchData();
@@ -117,6 +121,32 @@ export default function ClientsPage() {
 
         return nameMatch || cnpjMatch;
     });
+
+    const handleDeleteClient = async (client: Client, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent row navigation
+        const confirmed = window.confirm(
+            `⚠️ EXCLUIR PERMANENTEMENTE\n\nEsta ação NÃO pode ser desfeita.\n\nTem certeza que deseja excluir o cliente "${client.name}" e todos os seus dados (interações, tarefas, histórico)?`
+        );
+        if (!confirmed) return;
+
+        try {
+            const res = await fetch(`/api/clients/${client.id}`, { method: "DELETE" });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Erro ao excluir");
+
+            toast({
+                title: "✅ Cliente excluído",
+                description: `"${client.name}" foi removido permanentemente.`,
+            });
+            fetchData(); // Refresh list
+        } catch (err: any) {
+            toast({
+                variant: "destructive",
+                title: "Erro ao excluir cliente",
+                description: err.message,
+            });
+        }
+    };
 
     if (loading) {
         return (
@@ -234,18 +264,31 @@ export default function ClientsPage() {
                                         {client.assignedUser.name}
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        {client.phone && (
-                                            <a
-                                                href={getWhatsAppLink(client.phone)}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <Button size="sm" variant="ghost">
-                                                    <MessageCircle className="h-4 w-4 text-green-600" />
+                                        <div className="flex items-center justify-end gap-1">
+                                            {client.phone && (
+                                                <a
+                                                    href={getWhatsAppLink(client.phone)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <Button size="sm" variant="ghost">
+                                                        <MessageCircle className="h-4 w-4 text-green-600" />
+                                                    </Button>
+                                                </a>
+                                            )}
+                                            {isGestor && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={(e) => handleDeleteClient(client, e)}
+                                                    title="Excluir cliente permanentemente"
+                                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
                                                 </Button>
-                                            </a>
-                                        )}
+                                            )}
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))}

@@ -226,3 +226,45 @@ export async function PATCH(
         );
     }
 }
+// DELETE /api/clients/[id] — Excluir cliente permanentemente (somente GESTOR)
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: { id: string } }
+) {
+    try {
+        const user = await getCurrentUser();
+        if (!user) {
+            return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+        }
+        if ((user as any).role !== "GESTOR") {
+            return NextResponse.json(
+                { error: "Apenas gestores podem excluir clientes permanentemente." },
+                { status: 403 }
+            );
+        }
+
+        const clientId = params.id;
+
+        const existing = await prisma.client.findUnique({ where: { id: clientId } });
+        if (!existing) {
+            return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
+        }
+
+        // Cascade delete dentro de uma transação
+        await prisma.$transaction(async (tx) => {
+            await tx.customFieldValue.deleteMany({ where: { clientId } });
+            await tx.clientProduct.deleteMany({ where: { clientId } });
+            await tx.interaction.deleteMany({ where: { clientId } });
+            await tx.task.deleteMany({ where: { clientId } });
+            await tx.client.delete({ where: { id: clientId } });
+        });
+
+        return NextResponse.json({ success: true, message: `Cliente "${existing.name}" excluído permanentemente.` });
+    } catch (error: any) {
+        console.error("Erro ao excluir cliente:", error);
+        return NextResponse.json(
+            { error: error.message || "Erro ao excluir cliente" },
+            { status: 500 }
+        );
+    }
+}
