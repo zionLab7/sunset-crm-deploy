@@ -24,6 +24,7 @@ interface Product {
     name: string;
     stockCode: string;
     costPrice?: number | null;  // Preço de custo (nativo, somente gestor)
+    calculatedFieldValues?: Record<string, string>; // Pré-computado pelo servidor para todos os roles
     clients: Array<{ client: { id: string; name: string } }>;
     customFieldValues: Array<{
         customFieldId: string;
@@ -301,11 +302,14 @@ export default function ProductsPage() {
                                                 </div>
                                             ))}
 
-                                        {/* Campos calculados */}
+                                        {/* Campos calculados — usa o valor pré-computado pelo servidor */}
                                         {customFieldDefs
                                             .filter((fd) => fd.fieldType === "calculated")
                                             .map((fd) => {
-                                                const computed = computeCalculatedValue(product, fd);
+                                                // Usar valor pré-computado do servidor (visível para todos os roles)
+                                                const computed =
+                                                    product.calculatedFieldValues?.[fd.id] ||
+                                                    computeCalculatedValue(product, fd); // fallback client-side (gestor)
                                                 if (!computed) return null;
                                                 return (
                                                     <div key={fd.id} className="text-sm flex items-center gap-1">

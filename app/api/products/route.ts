@@ -46,11 +46,55 @@ export async function GET(request: Request) {
 
         const isGestor = (user as any).role === "GESTOR";
 
-        // Gestor vê costPrice; vendedor não
-        const filteredProducts = products.map((p) => ({
-            ...p,
-            costPrice: isGestor ? p.costPrice : undefined,
-        }));
+        // Fetch calculated field definitions for PRODUCT
+        const calculatedFieldDefs = await prisma.customField.findMany({
+            where: { entityType: "PRODUCT", fieldType: "calculated" },
+        });
+
+        // Helper: compute a single calculated value given a product
+        function computeCalcValue(
+            p: typeof products[number],
+            formula: { sourceField: string; operation: string; value: number }
+        ): number | null {
+            let numValue: number;
+            if (formula.sourceField === "__costPrice__") {
+                if (p.costPrice == null) return null;
+                numValue = p.costPrice;
+            } else {
+                const cfv = p.customFieldValues.find(
+                    (c) => c.customFieldId === formula.sourceField
+                );
+                if (!cfv) return null;
+                numValue = parseFloat(cfv.value);
+                if (isNaN(numValue)) return null;
+            }
+            switch (formula.operation) {
+                case "percentage_discount": return numValue * (1 - formula.value / 100);
+                case "percentage_add": return numValue * (1 + formula.value / 100);
+                case "fixed_discount": return numValue - formula.value;
+                case "fixed_add": return numValue + formula.value;
+                case "multiply": return numValue * formula.value;
+                default: return null;
+            }
+        }
+
+        // Gestor: vê costPrice; Vendedor: costPrice=undefined mas recebe calculatedFieldValues pré-computados
+        const filteredProducts = products.map((p) => {
+            const calculatedFieldValues: Record<string, string> = {};
+            for (const fd of calculatedFieldDefs) {
+                if (!fd.formula) continue;
+                try {
+                    const formula = JSON.parse(fd.formula);
+                    const result = computeCalcValue(p, formula);
+                    if (result !== null) calculatedFieldValues[fd.id] = result.toFixed(2);
+                } catch { /* invalid formula */ }
+            }
+            return {
+                ...p,
+                costPrice: isGestor ? p.costPrice : undefined,
+                calculatedFieldValues, // pré-computado para todos os roles
+            };
+        });
 
         return NextResponse.json({ products: filteredProducts });
     } catch (error: any) {

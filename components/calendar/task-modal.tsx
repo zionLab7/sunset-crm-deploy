@@ -24,7 +24,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Search, X } from "lucide-react";
 
 const taskSchema = z.object({
     title: z.string().min(3, "Título deve ter pelo menos 3 caracteres"),
@@ -62,6 +62,7 @@ export function TaskModal({
 }: TaskModalProps) {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
+    const [clientSearch, setClientSearch] = useState("");
 
     const {
         register,
@@ -85,6 +86,9 @@ export function TaskModal({
     const selectedClientId = watch("clientId");
     const selectedUserId = watch("userId");
     const selectedStatus = watch("status");
+    const filteredClients = clients.filter((c) =>
+        c.name.toLowerCase().includes(clientSearch.toLowerCase())
+    );
 
     useEffect(() => {
         if (selectedDate && !initialData) {
@@ -111,6 +115,7 @@ export function TaskModal({
                 dueDate: selectedDate?.toISOString().split("T")[0] || "",
                 status: "PENDENTE",
             });
+            setClientSearch("");
         }
     }, [open, initialData, selectedDate, reset]);
 
@@ -193,25 +198,65 @@ export function TaskModal({
                         />
                     </div>
 
-                    {/* Cliente */}
+                    {/* Cliente — Searchable combobox */}
                     <div>
                         <Label>Cliente (opcional)</Label>
-                        <Select
-                            value={selectedClientId || "none"}
-                            onValueChange={(value) => setValue("clientId", value === "none" ? undefined : value)}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Selecione um cliente" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">Nenhum cliente</SelectItem>
-                                {clients.map((client) => (
-                                    <SelectItem key={client.id} value={client.id}>
+                        <div className="border rounded-md mt-1">
+                            {/* Search input */}
+                            <div className="relative">
+                                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar cliente..."
+                                    value={clientSearch}
+                                    onChange={(e) => setClientSearch(e.target.value)}
+                                    className="w-full pl-8 pr-8 py-2 text-sm border-b focus:outline-none focus:ring-0 rounded-t-md bg-background"
+                                />
+                                {clientSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setClientSearch("")}
+                                        className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </div>
+                            {/* Scrollable list */}
+                            <div className="max-h-40 overflow-y-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => { setValue("clientId", undefined); setClientSearch(""); }}
+                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors ${!selectedClientId ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground"
+                                        }`}
+                                >
+                                    Nenhum cliente
+                                </button>
+                                {filteredClients.map((client) => (
+                                    <button
+                                        key={client.id}
+                                        type="button"
+                                        onClick={() => { setValue("clientId", client.id); setClientSearch(""); }}
+                                        className={`w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors ${selectedClientId === client.id ? "bg-primary/10 text-primary font-medium" : ""
+                                            }`}
+                                    >
                                         {client.name}
-                                    </SelectItem>
+                                    </button>
                                 ))}
-                            </SelectContent>
-                        </Select>
+                                {filteredClients.length === 0 && (
+                                    <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum cliente encontrado</p>
+                                )}
+                            </div>
+                            {/* Selected display */}
+                            {selectedClientId && !clientSearch && (
+                                <div className="px-3 py-1.5 border-t bg-primary/5 text-xs text-primary flex items-center justify-between">
+                                    <span>✓ {clients.find(c => c.id === selectedClientId)?.name}</span>
+                                    <button type="button" onClick={() => setValue("clientId", undefined)} className="text-muted-foreground hover:text-destructive">
+                                        <X className="h-3 w-3" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Vendedor Responsável */}

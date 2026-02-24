@@ -12,8 +12,14 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
         }
 
-        const userId = (user as any).id;
-        const userRole = (user as any).role;
+        // Lookup by email to avoid stale session ID (FK constraint fix)
+        const dbUser = await prisma.user.findUnique({ where: { email: user.email as string } });
+        if (!dbUser) {
+            return NextResponse.json({ error: "Usuário não encontrado" }, { status: 401 });
+        }
+
+        const userId = dbUser.id;
+        const userRole = dbUser.role;
         const body = await request.json();
 
         const { clients, currentStageId, assignedUserId } = body;

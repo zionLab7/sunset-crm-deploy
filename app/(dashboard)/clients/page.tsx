@@ -111,7 +111,8 @@ export default function ClientsPage() {
         const searchOnlyNumbers = searchTerm.replace(/\D/g, "");
 
         const nameMatch = client.name.toLowerCase().includes(searchNormalized);
-        const clientCNPJNumbers = client.cnpj.replace(/\D/g, "");
+        // Guard against null CNPJ (common after import without CNPJ)
+        const clientCNPJNumbers = (client.cnpj || "").replace(/\D/g, "");
         const cnpjMatch = searchOnlyNumbers.length > 0 && clientCNPJNumbers.includes(searchOnlyNumbers);
 
         return nameMatch || cnpjMatch;
@@ -214,7 +215,7 @@ export default function ClientsPage() {
                                 >
                                     <TableCell className="font-medium">{client.name}</TableCell>
                                     <TableCell className="text-muted-foreground">
-                                        {formatCNPJ(client.cnpj)}
+                                        {client.cnpj ? formatCNPJ(client.cnpj) : "—"}
                                     </TableCell>
                                     <TableCell>
                                         <Badge
