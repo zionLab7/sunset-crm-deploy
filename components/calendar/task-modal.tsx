@@ -30,8 +30,9 @@ const taskSchema = z.object({
     title: z.string().min(3, "Título deve ter pelo menos 3 caracteres"),
     description: z.string().optional(),
     clientId: z.string().optional().nullable(),
-    userId: z.string().optional(), // Vendedor responsável
+    userId: z.string().optional(),
     dueDate: z.string().min(1, "Data é obrigatória"),
+    dueTime: z.string().optional(),
     status: z.enum(["PENDENTE", "ATRASADA", "CONCLUIDA"]),
 });
 
@@ -40,13 +41,14 @@ type TaskFormData = z.infer<typeof taskSchema>;
 interface TaskModalProps {
     open: boolean;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess?: () => void;
     clients: Array<{ id: string; name: string }>;
-    users?: Array<{ id: string; name: string }>; // Lista de vendedores (para gestores)
-    currentUserId?: string; // ID do usuário logado
-    userRole?: string; // Role do usuário (GESTOR ou VENDEDOR)
+    users?: Array<{ id: string; name: string }>;
+    currentUserId?: string;
+    userRole?: string;
     initialData?: Partial<TaskFormData> & { id?: string };
     selectedDate?: Date;
+    preselectedClientId?: string; // pre-fills client selection
 }
 
 export function TaskModal({
@@ -59,6 +61,7 @@ export function TaskModal({
     userRole,
     initialData,
     selectedDate,
+    preselectedClientId,
 }: TaskModalProps) {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
@@ -104,20 +107,22 @@ export function TaskModal({
                 clientId: initialData.clientId || undefined,
                 userId: initialData.userId || (userRole === "VENDEDOR" ? currentUserId : undefined),
                 dueDate: initialData.dueDate || "",
+                dueTime: (initialData as any).dueTime || "",
                 status: initialData.status || "PENDENTE",
             });
         } else if (open && !initialData) {
             reset({
                 title: "",
                 description: "",
-                clientId: undefined,
+                clientId: preselectedClientId || undefined,
                 userId: userRole === "VENDEDOR" ? currentUserId : undefined,
                 dueDate: selectedDate?.toISOString().split("T")[0] || "",
+                dueTime: "",
                 status: "PENDENTE",
             });
             setClientSearch("");
         }
-    }, [open, initialData, selectedDate, reset]);
+    }, [open, initialData, selectedDate, reset, preselectedClientId]);
 
     const onSubmit = async (data: TaskFormData) => {
         setLoading(true);
@@ -130,6 +135,7 @@ export function TaskModal({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...data,
+                    dueTime: data.dueTime || null,
                     clientId: data.clientId && data.clientId !== "none" ? data.clientId : null,
                 }),
             });
@@ -145,7 +151,7 @@ export function TaskModal({
             });
 
             reset();
-            onSuccess();
+            onSuccess?.();
             onClose();
             router.refresh();
         } catch (error: any) {
@@ -298,17 +304,29 @@ export function TaskModal({
                         </div>
                     ) : null}
 
-                    {/* Data */}
-                    <div>
-                        <Label htmlFor="dueDate">Data de Vencimento *</Label>
-                        <Input
-                            id="dueDate"
-                            type="date"
-                            {...register("dueDate")}
-                        />
-                        {errors.dueDate && (
-                            <p className="text-sm text-red-500 mt-1">{errors.dueDate.message}</p>
-                        )}
+                    {/* Data e Hora */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <Label htmlFor="dueDate">Data de Vencimento *</Label>
+                            <Input
+                                id="dueDate"
+                                type="date"
+                                {...register("dueDate")}
+                                className="mt-1"
+                            />
+                            {errors.dueDate && (
+                                <p className="text-sm text-red-500 mt-1">{errors.dueDate.message}</p>
+                            )}
+                        </div>
+                        <div>
+                            <Label htmlFor="dueTime">Horário (opcional)</Label>
+                            <Input
+                                id="dueTime"
+                                type="time"
+                                {...register("dueTime")}
+                                className="mt-1"
+                            />
+                        </div>
                     </div>
 
                     {/* Status */}

@@ -50,7 +50,7 @@ interface ClientFormProps {
     stages: Array<{ id: string; name: string; color: string }>;
     users?: Array<{ id: string; name: string }>;
     products?: Product[];
-    initialData?: Partial<ClientFormData> & { id?: string; productIds?: string[] };
+    initialData?: Partial<ClientFormData> & { id?: string; productIds?: string[]; customFieldValues?: Record<string, string> };
     isGestor: boolean;
     customFields?: CustomField[];
     onSuccess?: () => void;
@@ -70,7 +70,9 @@ export function ClientForm({
     const [selectedProducts, setSelectedProducts] = useState<string[]>(
         initialData?.productIds || []
     );
-    const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+    const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>(
+        initialData?.customFieldValues || {}
+    );
     const [cnpjValue, setCnpjValue] = useState(
         initialData?.cnpj ? formatCNPJ(initialData.cnpj) : ""
     );

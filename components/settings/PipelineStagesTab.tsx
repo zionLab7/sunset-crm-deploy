@@ -3,9 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Edit, Trash2, Layers, GripVertical, CheckCircle2 } from "lucide-react";
+import { Plus, Edit, Trash2, Layers, GripVertical } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useConfirm } from "@/hooks/use-confirm";
 import { PipelineStageModal } from "./PipelineStageModal";
@@ -16,7 +14,6 @@ interface PipelineStage {
     name: string;
     color: string;
     order: number;
-    isClosedStage?: boolean;
     _count?: {
         clients: number;
     };
@@ -104,14 +101,12 @@ export function PipelineStagesTab() {
         const [reorderedItem] = items.splice(result.source.index, 1);
         items.splice(result.destination.index, 0, reorderedItem);
 
-        // Atualizar ordem local imediatamente
         const updatedStages = items.map((item, index) => ({
             ...item,
             order: index,
         }));
         setStages(updatedStages);
 
-        // Enviar para API
         try {
             const res = await fetch("/api/admin/pipeline-stages/reorder", {
                 method: "PATCH",
@@ -135,39 +130,7 @@ export function PipelineStagesTab() {
                 title: "Erro ao reordenar",
                 description: error.message,
             });
-            // Reverter em caso de erro
             fetchStages();
-        }
-    };
-
-    const handleToggleClosedStage = async (stage: PipelineStage) => {
-        try {
-            const newValue = !stage.isClosedStage;
-
-            const res = await fetch(`/api/admin/pipeline-stages/${stage.id}/set-closed`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ isClosedStage: newValue }),
-            });
-
-            if (!res.ok) {
-                throw new Error("Erro ao atualizar fase");
-            }
-
-            toast({
-                title: newValue ? "✅ Fase marcada como Venda Fechada!" : "ℹ️ Fase desmarcada",
-                description: newValue
-                    ? `${stage.name} agora define vendas fechadas nos relatórios`
-                    : `${stage.name} não é mais considerada venda fechada`,
-            });
-
-            fetchStages();
-        } catch (error: any) {
-            toast({
-                variant: "destructive",
-                title: "Erro ao atualizar fase",
-                description: error.message,
-            });
         }
     };
 
@@ -241,35 +204,12 @@ export function PipelineStagesTab() {
                                                             style={{ backgroundColor: stage.color }}
                                                         />
                                                         <div className="flex-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <h4 className="font-medium">{stage.name}</h4>
-                                                                {stage.isClosedStage && (
-                                                                    <Badge variant="default" className="bg-green-600">
-                                                                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                                                                        Venda Fechada
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-                                                            <div className="flex items-center gap-3 mt-1">
-                                                                {stage._count !== undefined && (
-                                                                    <p className="text-xs text-muted-foreground">
-                                                                        {stage._count.clients} cliente(s)
-                                                                    </p>
-                                                                )}
-                                                                <div className="flex items-center gap-2">
-                                                                    <Checkbox
-                                                                        checked={stage.isClosedStage || false}
-                                                                        onCheckedChange={() => handleToggleClosedStage(stage)}
-                                                                        id={`closed-${stage.id}`}
-                                                                    />
-                                                                    <label
-                                                                        htmlFor={`closed-${stage.id}`}
-                                                                        className="text-xs text-muted-foreground cursor-pointer"
-                                                                    >
-                                                                        Marcar como Venda Fechada
-                                                                    </label>
-                                                                </div>
-                                                            </div>
+                                                            <h4 className="font-medium">{stage.name}</h4>
+                                                            {stage._count !== undefined && (
+                                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                                    {stage._count.clients} cliente(s)
+                                                                </p>
+                                                            )}
                                                         </div>
                                                         <div className="flex gap-1">
                                                             <Button

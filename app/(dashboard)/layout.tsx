@@ -18,6 +18,7 @@ import {
     X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/ui/notification-bell";
 
 const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -78,6 +79,9 @@ export default function DashboardLayout({
                     </div>
                     <span className="text-lg font-bold">Sunset CRM</span>
                 </div>
+                <div className="ml-auto">
+                    <NotificationBell />
+                </div>
             </div>
 
             {/* Mobile overlay */}
@@ -93,7 +97,7 @@ export default function DashboardLayout({
                 className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-200 ease-in-out md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
                     }`}
             >
-                {/* Logo */}
+                {/* Logo + Bell */}
                 <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200">
                     <div className="flex items-center">
                         <div className="w-8 h-8 bg-gradient-sunset rounded-lg flex items-center justify-center">
@@ -113,14 +117,17 @@ export default function DashboardLayout({
                         </div>
                         <span className="ml-3 text-xl font-bold">Sunset CRM</span>
                     </div>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="md:hidden p-1"
-                        onClick={() => setSidebarOpen(false)}
-                    >
-                        <X className="h-5 w-5" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                        <NotificationBell />
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="md:hidden p-1"
+                            onClick={() => setSidebarOpen(false)}
+                        >
+                            <X className="h-5 w-5" />
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Navigation */}

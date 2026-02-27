@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
             where: { cnpj: { not: null } },
         });
         const existingCnpjs = new Set(
-            existingClients.map((c) => c.cnpj).filter(Boolean)
+            existingClients.map((c: { cnpj: string | null }) => c.cnpj).filter(Boolean)
         );
 
         let created = 0;
@@ -109,6 +109,21 @@ export async function POST(request: NextRequest) {
                         userId: userId,
                     },
                 });
+
+                // Save custom field values from import mapping
+                if (client.customFields && typeof client.customFields === "object") {
+                    const cfEntries = Object.entries(client.customFields).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "");
+                    if (cfEntries.length > 0) {
+                        await prisma.customFieldValue.createMany({
+                            data: cfEntries.map(([fieldId, value]) => ({
+                                customFieldId: fieldId,
+                                clientId: newClient.id,
+                                value: String(value),
+                            })),
+                            skipDuplicates: true,
+                        });
+                    }
+                }
 
                 // Track CNPJ to avoid duplicates within same import
                 if (cnpj) {

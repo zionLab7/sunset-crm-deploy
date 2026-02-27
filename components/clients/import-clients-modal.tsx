@@ -70,6 +70,7 @@ export function ImportClientsModal({
     const [assignedUserId, setAssignedUserId] = useState("");
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<ImportResult | null>(null);
+    const [customFieldDefs, setCustomFieldDefs] = useState<Array<{ id: string; name: string }>>([]);
 
     // Reset on open
     useEffect(() => {
@@ -82,6 +83,11 @@ export function ImportClientsModal({
             setStageId(stages[0]?.id || "");
             setAssignedUserId("");
             setResult(null);
+            // Fetch custom CLIENT fields for column mapping
+            fetch("/api/custom-fields?entityType=CLIENT")
+                .then(r => r.json())
+                .then(d => setCustomFieldDefs((d.customFields || []).filter((f: any) => f.fieldType !== "calculated").map((f: any) => ({ id: f.id, name: f.name }))))
+                .catch(() => { });
         }
     }, [open, stages]);
 
@@ -187,11 +193,24 @@ export function ImportClientsModal({
             // Build client objects from mapped data
             const clients = rows.map((row) => {
                 const client: Record<string, any> = {};
+                const customFields: Record<string, string> = {};
                 Object.entries(mapping).forEach(([fieldKey, colIdx]) => {
                     if (colIdx !== "" && colIdx !== undefined) {
-                        client[fieldKey] = row[parseInt(colIdx)];
+                        const val = row[parseInt(colIdx)];
+                        if (fieldKey.startsWith("cf_")) {
+                            // Custom field
+                            const cfId = fieldKey.replace("cf_", "");
+                            if (val !== null && val !== undefined && val !== "") {
+                                customFields[cfId] = String(val);
+                            }
+                        } else {
+                            client[fieldKey] = val;
+                        }
                     }
                 });
+                if (Object.keys(customFields).length > 0) {
+                    client.customFields = customFields;
+                }
                 return client;
             });
 
@@ -247,11 +266,11 @@ export function ImportClientsModal({
                             <div key={s} className="flex items-center gap-2">
                                 <div
                                     className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${step === s
-                                            ? "bg-primary text-primary-foreground"
-                                            : idx <
-                                                ["upload", "map", "confirm", "result"].indexOf(step)
-                                                ? "bg-green-500 text-white"
-                                                : "bg-gray-200 text-gray-500"
+                                        ? "bg-primary text-primary-foreground"
+                                        : idx <
+                                            ["upload", "map", "confirm", "result"].indexOf(step)
+                                            ? "bg-green-500 text-white"
+                                            : "bg-gray-200 text-gray-500"
                                         }`}
                                 >
                                     {idx <
@@ -327,6 +346,7 @@ export function ImportClientsModal({
                             <Label className="text-sm font-semibold">
                                 Mapeamento de Colunas
                             </Label>
+                            {/* Standard CRM fields */}
                             {CRM_FIELDS.map((field) => (
                                 <div
                                     key={field.key}
@@ -365,6 +385,44 @@ export function ImportClientsModal({
                                     </Select>
                                 </div>
                             ))}
+
+                            {/* Dynamic custom CLIENT fields */}
+                            {customFieldDefs.length > 0 && (
+                                <>
+                                    <div className="pt-2 border-t">
+                                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                                            📋 Campos Adicionais
+                                        </p>
+                                    </div>
+                                    {customFieldDefs.map((cf) => (
+                                        <div key={`cf_${cf.id}`} className="flex items-center gap-3">
+                                            <div className="w-40 text-sm font-medium truncate text-blue-700">
+                                                {cf.name}
+                                            </div>
+                                            <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                                            <Select
+                                                value={mapping[`cf_${cf.id}`] || "__none__"}
+                                                onValueChange={(val) =>
+                                                    setMapping((prev) => ({
+                                                        ...prev,
+                                                        [`cf_${cf.id}`]: val === "__none__" ? "" : val,
+                                                    }))
+                                                }
+                                            >
+                                                <SelectTrigger className="flex-1">
+                                                    <SelectValue placeholder="— Não mapear —" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none__">— Não mapear —</SelectItem>
+                                                    {headers.map((h, idx) => (
+                                                        <SelectItem key={idx} value={idx.toString()}>{h}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ))}
+                                </>
+                            )}
                         </div>
 
                         {/* Stage + User Selection */}
@@ -546,8 +604,8 @@ export function ImportClientsModal({
                     <div className="space-y-4">
                         <div
                             className={`rounded-lg p-6 text-center ${result.created > 0
-                                    ? "bg-green-50 border border-green-200"
-                                    : "bg-red-50 border border-red-200"
+                                ? "bg-green-50 border border-green-200"
+                                : "bg-red-50 border border-red-200"
                                 }`}
                         >
                             {result.created > 0 ? (

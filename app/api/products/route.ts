@@ -78,20 +78,45 @@ export async function GET(request: Request) {
             }
         }
 
-        // Gestor: vê costPrice; Vendedor: costPrice=undefined mas recebe calculatedFieldValues pré-computados
+        // For VENDEDOR: fetch ALL productFieldVisibility rules at once (bulk) and filter out hidden fields
+        let hiddenFieldsByProduct: Record<string, Set<string>> = {};
+        if (!isGestor) {
+            const allVisibilities = await prisma.productFieldVisibility.findMany({
+                where: {
+                    productId: { in: products.map(p => p.id) },
+                    hiddenForRole: "VENDEDOR",
+                },
+                select: { productId: true, fieldKey: true },
+            });
+            for (const v of allVisibilities) {
+                if (!hiddenFieldsByProduct[v.productId]) hiddenFieldsByProduct[v.productId] = new Set();
+                hiddenFieldsByProduct[v.productId].add(v.fieldKey);
+            }
+        }
+
+        // Gestor: vê costPrice; Vendedor: costPrice=undefined mas recebe calculatedFieldValues pré-computados e campo custom filtrado por visibilidade
         const filteredProducts = products.map((p) => {
             const calculatedFieldValues: Record<string, string> = {};
             for (const fd of calculatedFieldDefs) {
                 if (!fd.formula) continue;
+                // If VENDEDOR and this calculated field is hidden, skip
+                if (!isGestor && hiddenFieldsByProduct[p.id]?.has(fd.id)) continue;
                 try {
                     const formula = JSON.parse(fd.formula);
                     const result = computeCalcValue(p, formula);
                     if (result !== null) calculatedFieldValues[fd.id] = result.toFixed(2);
                 } catch { /* invalid formula */ }
             }
+
+            // Filter customFieldValues for VENDEDOR based on visibility rules
+            const visibleCustomFieldValues = isGestor
+                ? p.customFieldValues
+                : p.customFieldValues.filter(cfv => !hiddenFieldsByProduct[p.id]?.has(cfv.customFieldId));
+
             return {
                 ...p,
                 costPrice: isGestor ? p.costPrice : undefined,
+                customFieldValues: visibleCustomFieldValues,
                 calculatedFieldValues, // pré-computado para todos os roles
             };
         });

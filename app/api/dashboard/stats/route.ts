@@ -11,7 +11,6 @@ export async function GET() {
             return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
         }
 
-        // Buscar o usuário real do banco pelo email (garante que o ID está correto)
         const dbUser = await prisma.user.findUnique({
             where: { email: user.email! },
             select: { id: true, role: true, monthlyGoal: true },
@@ -23,57 +22,54 @@ export async function GET() {
 
         const { id: userId, role: userRole, monthlyGoal } = dbUser;
 
-        // Buscar fases de venda fechada
-        const closedStages = await prisma.pipelineStage.findMany({
-            where: { isClosedStage: true },
-            select: { id: true },
-        });
-        const closedStageIds = closedStages.map(s => s.id);
-
-        // Buscar clientes fechados (com as interações de venda)
-        const closedClients = await prisma.client.findMany({
-            where: {
-                currentStageId: { in: closedStageIds },
-                ...(userRole === "GESTOR" ? {} : { assignedUserId: userId }),
-            },
-            include: {
-                interactions: {
-                    where: { type: "STATUS_CHANGE" },
-                    orderBy: { createdAt: "desc" },
-                },
-            },
-        });
-
-        // Para cada cliente fechado: usar saleValue do metadata da interação de venda,
-        // com fallback para potentialValue se ainda não registrado via modal
-        let currentValue = 0;
-        for (const client of closedClients) {
-            let saleValue: number | null = null;
-
-            // Procurar a interação com saleValue registrado pelo SaleModal
-            for (const interaction of client.interactions) {
-                if (interaction.metadata) {
-                    try {
-                        const meta = JSON.parse(interaction.metadata);
-                        if (meta.saleValue != null) {
-                            saleValue = parseFloat(String(meta.saleValue));
-                            break;
-                        }
-                    } catch { /* ignorar JSON inválido */ }
-                }
-            }
-
-            // Fallback: potentialValue do cliente (casos migrados ou sem modal)
-            currentValue += saleValue !== null ? saleValue : client.potentialValue;
+        // Fetch all interaction types marked as sale types
+        let saleTypeNames: string[] = [];
+        try {
+            const saleTypes = await (prisma as any).interactionTypeConfig.findMany({
+                where: { isSaleType: true },
+                select: { name: true },
+            });
+            saleTypeNames = saleTypes.map((t: any) => t.name);
+        } catch {
+            // fallback: use "Venda" if table not available
+            saleTypeNames = ["Venda"];
         }
 
-        // Todos os clientes (para newLeads e tarefas)
+        // Start of current month
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        // Fetch interactions this month that are sale types with a saleValue in metadata
+        const saleInteractions = await prisma.interaction.findMany({
+            where: {
+                type: { in: saleTypeNames },
+                metadata: { contains: "saleValue" },
+                createdAt: { gte: startOfMonth },
+                ...(userRole === "GESTOR" ? {} : { userId }),
+            },
+            select: { metadata: true },
+        });
+
+        // Sum up actual sale values from metadata
+        let currentValue = 0;
+        for (const interaction of saleInteractions) {
+            if (interaction.metadata) {
+                try {
+                    const meta = JSON.parse(interaction.metadata);
+                    if (meta.saleValue != null) {
+                        currentValue += parseFloat(String(meta.saleValue));
+                    }
+                } catch { /* ignore invalid JSON */ }
+            }
+        }
+
+        // All clients for newLeads count
         const allClients = await prisma.client.findMany({
             where: userRole === "GESTOR" ? {} : { assignedUserId: userId },
             select: { id: true, currentStageId: true },
         });
 
-        // Tarefas atrasadas
+        // Overdue tasks
         const hoje = new Date();
         const overdueTasks = await prisma.task.count({
             where: {
@@ -83,7 +79,7 @@ export async function GET() {
             },
         });
 
-        // Novos leads (Prospecção)
+        // New leads (Prospecção)
         const prospeccaoStage = await prisma.pipelineStage.findFirst({
             where: { name: "Prospecção" },
             select: { id: true },

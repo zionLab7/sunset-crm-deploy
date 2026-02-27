@@ -5,15 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Phone, Save, ExternalLink, Bot, Eye, EyeOff } from "lucide-react";
+import { Phone, Mail, Save, ExternalLink, Bot, Eye, EyeOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 export function IntegrationsTab() {
     const [pabxUrl, setPabxUrl] = useState("");
+    const [emailUrl, setEmailUrl] = useState("");
     const [geminiKey, setGeminiKey] = useState("");
     const [showGeminiKey, setShowGeminiKey] = useState(false);
     const [loading, setLoading] = useState(true);
     const [savingPabx, setSavingPabx] = useState(false);
+    const [savingEmail, setSavingEmail] = useState(false);
     const [savingGemini, setSavingGemini] = useState(false);
 
     useEffect(() => {
@@ -22,14 +24,17 @@ export function IntegrationsTab() {
 
     const fetchConfig = async () => {
         try {
-            const [pabxRes, geminiRes] = await Promise.all([
+            const [pabxRes, geminiRes, emailRes] = await Promise.all([
                 fetch("/api/admin/system-config?key=pabxUrlTemplate"),
                 fetch("/api/admin/system-config?key=geminiApiKey"),
+                fetch("/api/admin/system-config?key=emailUrlTemplate"),
             ]);
             const pabxData = await pabxRes.json();
             const geminiData = await geminiRes.json();
+            const emailData = await emailRes.json();
             if (pabxData.config?.value) setPabxUrl(pabxData.config.value);
             if (geminiData.config?.value) setGeminiKey(geminiData.config.value);
+            if (emailData.config?.value) setEmailUrl(emailData.config.value);
         } catch (error) {
             console.error("Erro ao carregar configuração:", error);
         } finally {
@@ -132,6 +137,51 @@ export function IntegrationsTab() {
                     >
                         <Save className="h-4 w-4 mr-2" />
                         {savingGemini ? "Salvando..." : "Salvar Chave"}
+                    </Button>
+                </CardContent>
+            </Card>
+
+            {/* Email */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center gap-2">
+                        <Mail className="h-5 w-5 text-muted-foreground" />
+                        <CardTitle>Email</CardTitle>
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div>
+                        <Label htmlFor="emailUrl">URL do Email para Contato</Label>
+                        <Input
+                            id="emailUrl"
+                            value={emailUrl}
+                            onChange={(e) => setEmailUrl(e.target.value)}
+                            placeholder="mailto:{email} ou https://mail.google.com/mail/?to={email}"
+                            className="mt-1"
+                        />
+                        <p className="text-xs text-muted-foreground mt-2">
+                            Use <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{"{ email }"}</code> como
+                            placeholder para o email do cliente. O email será inserido automaticamente.
+                        </p>
+                        <div className="mt-3 p-3 bg-muted/50 rounded-lg">
+                            <p className="text-xs font-medium text-muted-foreground mb-1">Exemplo:</p>
+                            <div className="flex items-center gap-2 text-xs">
+                                <ExternalLink className="h-3 w-3" />
+                                <span className="font-mono text-muted-foreground">
+                                    {emailUrl
+                                        ? emailUrl.replace("{email}", "cliente@empresa.com")
+                                        : "Configure a URL acima"}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <Button
+                        onClick={() => handleSaveConfig("emailUrlTemplate", emailUrl, setSavingEmail, "URL do Email")}
+                        disabled={savingEmail}
+                    >
+                        <Save className="h-4 w-4 mr-2" />
+                        {savingEmail ? "Salvando..." : "Salvar Configuração"}
                     </Button>
                 </CardContent>
             </Card>

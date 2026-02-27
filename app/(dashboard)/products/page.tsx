@@ -274,18 +274,6 @@ export default function ProductsPage() {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-3">
-                                        {/* Preço de custo — somente gestor */}
-                                        {isGestor && product.costPrice != null && (
-                                            <div className="bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-medium text-amber-700">Custo:</span>
-                                                    <span className="text-sm font-bold text-amber-900">
-                                                        {formatCurrency(product.costPrice)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        )}
-
                                         {descricao && (
                                             <p className="text-sm text-muted-foreground line-clamp-2">
                                                 {descricao}
@@ -294,13 +282,23 @@ export default function ProductsPage() {
 
                                         {/* Outros campos customizados */}
                                         {product.customFieldValues
-                                            .filter((cfv) => cfv.customField.name !== "Preço" && cfv.customField.name !== "Descrição" && cfv.customField.fieldType !== "calculated")
-                                            .map((cfv) => (
-                                                <div key={cfv.customFieldId} className="text-sm">
-                                                    <span className="font-medium">{cfv.customField.name}:</span>{" "}
-                                                    <span className="text-muted-foreground">{cfv.value}</span>
-                                                </div>
-                                            ))}
+                                            .filter((cfv) => cfv.customField.name !== "Descrição" && cfv.customField.fieldType !== "calculated")
+                                            .map((cfv) => {
+                                                const color = (cfv.customField as any).highlightColor;
+                                                return (
+                                                    <div
+                                                        key={cfv.customFieldId}
+                                                        className="text-sm flex items-center gap-1"
+                                                        style={color ? { borderLeft: `3px solid ${color}`, paddingLeft: 6 } : {}}
+                                                    >
+                                                        <span
+                                                            className="font-medium"
+                                                            style={color ? { color } : {}}
+                                                        >{cfv.customField.name}:</span>{" "}
+                                                        <span className="text-muted-foreground">{cfv.value}</span>
+                                                    </div>
+                                                );
+                                            })}
 
                                         {/* Campos calculados — usa o valor pré-computado pelo servidor */}
                                         {customFieldDefs

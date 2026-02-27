@@ -13,6 +13,7 @@ const customFieldSchema = z.object({
     formula: z.string().nullable().optional(),
     required: z.boolean().default(false),
     order: z.number().default(0),
+    highlightColor: z.string().nullable().optional(),
 });
 
 // POST - Criar campo customizado
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
                 formula: validatedData.formula ?? null,
                 required: validatedData.required,
                 order: validatedData.order,
+                highlightColor: validatedData.highlightColor ?? null,
             },
         });
 

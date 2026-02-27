@@ -6,7 +6,6 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(request: Request) {
     try {
-        // Apenas gestores podem acessar relatórios
         await requireRole("GESTOR");
 
         const { searchParams } = new URL(request.url);
@@ -16,178 +15,131 @@ export async function GET(request: Request) {
         let startDate = new Date();
 
         switch (period) {
-            case "week":
-                startDate.setDate(now.getDate() - 7);
-                break;
-            case "month":
-                startDate.setMonth(now.getMonth() - 1);
-                break;
-            case "quarter":
-                startDate.setMonth(now.getMonth() - 3);
-                break;
-            case "year":
-                startDate.setFullYear(now.getFullYear() - 1);
-                break;
-            default:
-                startDate.setMonth(now.getMonth() - 1);
+            case "week": startDate.setDate(now.getDate() - 7); break;
+            case "month": startDate = new Date(now.getFullYear(), now.getMonth(), 1); break;
+            case "quarter": startDate.setMonth(now.getMonth() - 3); break;
+            case "year": startDate.setFullYear(now.getFullYear() - 1); break;
+            default: startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         }
 
-        // Buscar estágios fechados
-        const closedStages = await prisma.pipelineStage.findMany({
-            where: { isClosedStage: true },
-        });
-        const closedStageIds = closedStages.map((s) => s.id);
-
-        // Helper: extrair saleValue de interactions de venda
-        // Busca todas as interações STATUS_CHANGE com saleValue no metadata
-        const getSaleValueFromInteractions = async (clientIds: string[]): Promise<Map<string, number>> => {
-            if (clientIds.length === 0) return new Map();
-
-            const saleInteractions = await prisma.interaction.findMany({
-                where: {
-                    clientId: { in: clientIds },
-                    type: "STATUS_CHANGE",
-                    createdAt: { gte: startDate, lte: now },
-                },
-                orderBy: { createdAt: "desc" },
+        // ✅ Fetch only custom sale interaction type names (NOT STATUS_CHANGE)
+        let saleTypeNames: string[] = [];
+        try {
+            const saleTypes = await (prisma as any).interactionTypeConfig.findMany({
+                where: { isSaleType: true },
+                select: { name: true },
             });
+            saleTypeNames = saleTypes.map((t: any) => t.name);
+        } catch {
+            saleTypeNames = ["Venda"];
+        }
+        // Guarantee "Venda" is always included as fallback
+        if (!saleTypeNames.includes("Venda")) saleTypeNames.push("Venda");
 
-            // Para cada cliente, pegar a última interação com saleValue
-            const saleMap = new Map<string, number>();
-            for (const interaction of saleInteractions) {
-                if (!interaction.metadata) continue;
-                try {
-                    const meta = JSON.parse(interaction.metadata);
-                    if (meta.saleValue && !saleMap.has(interaction.clientId)) {
-                        saleMap.set(interaction.clientId, parseFloat(meta.saleValue));
-                    }
-                } catch { /* ignore */ }
-            }
-            return saleMap;
-        };
+        // ✅ Fetch ALL sale interactions in the period (by type name + saleValue in metadata)
+        // No pipeline stage filtering — sales come solely from registered interactions
+        const allSaleInteractions = await prisma.interaction.findMany({
+            where: {
+                type: { in: saleTypeNames },
+                metadata: { contains: "saleValue" },
+                createdAt: { gte: startDate, lte: now },
+            },
+            select: { id: true, clientId: true, userId: true, metadata: true, createdAt: true },
+        });
 
-        // 1. RANKING DE VENDEDORES
+        // Build a map: clientId -> total sale value
+        const clientSaleMap = new Map<string, number>();
+        // Build a map: userId -> total sale value (for ranking)
+        const userSaleMap = new Map<string, number>();
+        // Count unique clients with sales
+        const clientsWithSales = new Set<string>();
+
+        let totalVendasGeral = 0;
+
+        for (const interaction of allSaleInteractions) {
+            if (!interaction.metadata) continue;
+            try {
+                const meta = JSON.parse(interaction.metadata);
+                const val = parseFloat(String(meta.saleValue || 0));
+                if (val > 0) {
+                    clientSaleMap.set(interaction.clientId, (clientSaleMap.get(interaction.clientId) || 0) + val);
+                    userSaleMap.set(interaction.userId, (userSaleMap.get(interaction.userId) || 0) + val);
+                    clientsWithSales.add(interaction.clientId);
+                    totalVendasGeral += val;
+                }
+            } catch { /* ignore */ }
+        }
+
+        // ✅ Vendor ranking — based purely on sale interactions
         const vendedores = await prisma.user.findMany({
             where: { role: "VENDEDOR" },
             include: {
                 clients: {
-                    where: {
-                        createdAt: { gte: startDate, lte: now },
-                    },
-                    include: { currentStage: true },
-                },
-                tasks: {
                     where: { createdAt: { gte: startDate, lte: now } },
                 },
+                tasks: { where: { createdAt: { gte: startDate, lte: now } } },
             },
         });
 
-        const vendedoresRanking = await Promise.all(
-            vendedores.map(async (vendedor) => {
-                const totalClientes = vendedor.clients.length;
-                const clientesFechados = vendedor.clients.filter(
-                    (c) => closedStageIds.includes(c.currentStageId)
-                );
-                const fechadoIds = clientesFechados.map((c) => c.id);
-                const saleMap = await getSaleValueFromInteractions(fechadoIds);
+        const vendedoresRanking = vendedores.map((vendedor) => {
+            const totalClientes = vendedor.clients.length;
+            const totalVendas = userSaleMap.get(vendedor.id) || 0;
+            // Count unique clients sold to by this vendedor
+            const clientesVendidos = allSaleInteractions.filter(
+                i => i.userId === vendedor.id && (clientSaleMap.get(i.clientId) || 0) > 0
+            );
+            const uniqueClientesVendidos = new Set(clientesVendidos.map(i => i.clientId)).size;
+            const conversao = totalClientes > 0 ? (uniqueClientesVendidos / totalClientes) * 100 : 0;
 
-                // Usar saleValue da interação se disponível, senão potentialValue
-                const totalVendas = clientesFechados.reduce((sum, c) => {
-                    return sum + (saleMap.get(c.id) ?? c.potentialValue);
-                }, 0);
-
-                const conversao =
-                    totalClientes > 0
-                        ? (clientesFechados.length / totalClientes) * 100
-                        : 0;
-
-                return {
-                    id: vendedor.id,
-                    name: vendedor.name,
-                    totalClientes,
-                    clientesFechados: clientesFechados.length,
-                    totalVendas,
-                    conversao: Math.round(conversao),
-                };
-            })
-        );
+            return {
+                id: vendedor.id,
+                name: vendedor.name,
+                totalClientes,
+                clientesFechados: uniqueClientesVendidos,
+                totalVendas,
+                conversao: Math.round(conversao),
+            };
+        });
 
         vendedoresRanking.sort((a, b) => b.totalVendas - a.totalVendas);
 
-        // 2. FUNIL DE CONVERSÃO
-        const stages = await prisma.pipelineStage.findMany({
-            orderBy: { order: "asc" },
-        });
-
+        // ✅ Funnel data — still shows distribution of clients across stages (informational only)
+        const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
         const clientesNoPeriodo = await prisma.client.findMany({
-            where: {
-                createdAt: { gte: startDate, lte: now },
-            },
+            where: { createdAt: { gte: startDate, lte: now } },
             include: { currentStage: true },
         });
+        const funnelData = stages.map((stage) => ({
+            stage: stage.name,
+            count: clientesNoPeriodo.filter(c => c.currentStageId === stage.id).length,
+            color: stage.color,
+        }));
 
-        const funnelData = stages.map((stage) => {
-            const count = clientesNoPeriodo.filter(
-                (c) => c.currentStageId === stage.id
-            ).length;
-            return { stage: stage.name, count, color: stage.color };
-        });
-
-        // 3. VENDAS POR DIA (últimos 30 dias)
-        const last30Days = new Date();
-        last30Days.setDate(now.getDate() - 30);
-
+        // ✅ Sales per day — from sale interactions
         const vendasPorDia: { date: string; vendas: number }[] = [];
-
         for (let i = 29; i >= 0; i--) {
             const date = new Date();
             date.setDate(now.getDate() - i);
             const dateStr = date.toISOString().split("T")[0];
-
-            // Contar interações de venda nesse dia
-            const vendasNoDia = await prisma.interaction.count({
-                where: {
-                    type: "STATUS_CHANGE",
-                    metadata: { contains: "saleValue" },
-                    createdAt: {
-                        gte: new Date(dateStr + "T00:00:00"),
-                        lt: new Date(dateStr + "T23:59:59"),
-                    },
-                },
-            });
-
+            const vendasNoDia = allSaleInteractions.filter(interaction => {
+                return interaction.createdAt.toISOString().split("T")[0] === dateStr;
+            }).reduce((sum, interaction) => {
+                try {
+                    const meta = JSON.parse(interaction.metadata || "{}");
+                    return sum + (parseFloat(String(meta.saleValue || 0)) > 0 ? 1 : 0);
+                } catch { return sum; }
+            }, 0);
             vendasPorDia.push({ date: dateStr, vendas: vendasNoDia });
         }
 
-        // 4. MÉTRICAS GERAIS
+        // ✅ Overall metrics — purely from sale interactions
         const totalClientes = await prisma.client.count({
-            where: {
-                createdAt: { gte: startDate, lte: now },
-            },
+            where: { createdAt: { gte: startDate, lte: now } },
         });
-
-        const clientesFechadosGeral = clientesNoPeriodo.filter(
-            (c) => closedStageIds.includes(c.currentStageId)
-        );
-
-        const clientesFechadosCount = clientesFechadosGeral.length;
-        const clientesAtivos = clientesNoPeriodo.filter(
-            (c) => !closedStageIds.includes(c.currentStageId)
-        ).length;
-
-        const taxaConversaoGeral =
-            totalClientes > 0 ? (clientesFechadosCount / totalClientes) * 100 : 0;
-
-        // Calcular valor total usando saleValue das interações
-        const fechadoIds = clientesFechadosGeral.map((c) => c.id);
-        const saleMapGeral = await getSaleValueFromInteractions(fechadoIds);
-
-        const valorTotalVendas = clientesFechadosGeral.reduce((sum, c) => {
-            return sum + (saleMapGeral.get(c.id) ?? c.potentialValue);
-        }, 0);
-
-        const ticketMedio =
-            clientesFechadosCount > 0 ? valorTotalVendas / clientesFechadosCount : 0;
+        const clientesFechadosCount = clientsWithSales.size;
+        const clientesAtivos = totalClientes - clientesFechadosCount;
+        const taxaConversaoGeral = totalClientes > 0 ? (clientesFechadosCount / totalClientes) * 100 : 0;
+        const ticketMedio = clientesFechadosCount > 0 ? totalVendasGeral / clientesFechadosCount : 0;
 
         return NextResponse.json({
             vendedoresRanking,
@@ -199,7 +151,7 @@ export async function GET(request: Request) {
                 clientesFechados: clientesFechadosCount,
                 taxaConversaoGeral: Math.round(taxaConversaoGeral),
                 ticketMedio: Math.round(ticketMedio),
-                valorTotalVendas,
+                valorTotalVendas: totalVendasGeral,
             },
         });
     } catch (error: any) {

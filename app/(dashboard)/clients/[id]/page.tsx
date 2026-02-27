@@ -58,6 +58,11 @@ export default async function ClientPage({
                     product: true,
                 },
             },
+            customFieldValues: {
+                include: {
+                    customField: true,
+                },
+            },
         },
     });
 

@@ -21,13 +21,7 @@ enum TaskStatus {
   ATRASADA
 }
 
-enum InteractionType {
-  CALL
-  VISIT
-  EMAIL
-  NOTE
-  STATUS_CHANGE
-}
+// InteractionType now managed dynamically in InteractionTypeConfig table
 
 enum EntityType {
   CLIENT
@@ -95,7 +89,9 @@ model Task {
   title       String
   description String?
   dueDate     DateTime
+  dueTime     String?    // "HH:MM" optional time
   status      TaskStatus @default(PENDENTE)
+  completedAt DateTime?  // set when status = CONCLUIDA
   clientId    String?
   userId      String
   createdAt   DateTime   @default(now())
@@ -108,31 +104,46 @@ model Task {
 }
 
 model Interaction {
-  id          String          @id @default(cuid())
-  type        InteractionType
+  id          String   @id @default(cuid())
+  type        String   // dynamic: references InteractionTypeConfig.name or legacy values
   description String
-  metadata    String?         // JSON string for additional data
+  metadata    String?  // JSON string for additional data (saleValue, etc)
   clientId    String
   userId      String
-  createdAt   DateTime        @default(now())
+  createdAt   DateTime @default(now())
   
-  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  user        User            @relation(fields: [userId], references: [id])
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
   
   @@map("interactions")
 }
 
-// Produtos (apenas campos fixos: nome e código)
+// Dynamic interaction types configured by gestor
+model InteractionTypeConfig {
+  id         String   @id @default(cuid())
+  name       String   // Ex: "Ligação", "Visita", "Venda"
+  emoji      String   @default("📝")
+  isSaleType Boolean  @default(false) // triggers sale modal
+  isSystem   Boolean  @default(false) // cannot be deleted
+  color      String   @default("gray")
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+  
+  @@map("interaction_type_configs")
+}
+
+// Produtos
 model Product {
   id                String   @id @default(cuid())
   name              String
-  stockCode         String   @unique  // Código do estoque
-  costPrice         Float?            // Preço de custo (visível apenas para gestores)
+  stockCode         String   @unique
+  costPrice         Float?   // Preço Standard (visível por padrão, gestor pode ocultar por produto)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
-  clients           ClientProduct[]
-  customFieldValues CustomFieldValue[]
+  clients                ClientProduct[]
+  customFieldValues      CustomFieldValue[]
+  productFieldVisibility ProductFieldVisibility[]
 
   @@map("products")
 }
@@ -154,19 +165,36 @@ model ClientProduct {
 
 // Campos Customizados (para Clientes E Produtos)
 model CustomField {
-  id         String     @id @default(cuid())
-  name       String     // Ex: "Nome do Responsável", "Preço", "Fornecedor"
-  fieldType  String     // "text", "number", "date", "select", "calculated"
-  options    String?    @db.Text  // JSON array para tipo "select"
-  formula    String?    @db.Text  // JSON para tipo "calculated": { sourceField, operation, value }
-  order      Int        @default(0)
-  required   Boolean    @default(false)
-  entityType EntityType // CLIENT ou PRODUCT
-  createdAt  DateTime   @default(now())
+  id             String     @id @default(cuid())
+  name           String
+  fieldType      String     // "text", "number", "date", "select", "calculated"
+  options        String?    @db.Text
+  formula        String?    @db.Text
+  order          Int        @default(0)
+  required       Boolean    @default(false)
+  highlightColor String?    // Ex: "#f59e0b" for visual highlight in product cards
+  entityType     EntityType
+  createdAt      DateTime   @default(now())
   
-  values CustomFieldValue[]
+  values               CustomFieldValue[]
+  productVisibilities  ProductFieldVisibility[]
 
   @@map("custom_fields")
+}
+
+// Per-product field visibility (gestor hides specific fields for specific products)
+model ProductFieldVisibility {
+  id            String   @id @default(cuid())
+  productId     String
+  fieldKey      String   // customFieldId OR "__costPrice__"
+  hiddenForRole String   @default("VENDEDOR")
+  customFieldId String?
+  
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customField CustomField? @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, fieldKey, hiddenForRole])
+  @@map("product_field_visibility")
 }
 
 // Valores dos Campos Customizados (para Clientes E Produtos)

@@ -10,6 +10,7 @@ import { UsersTab } from "@/components/settings/UsersTab";
 import { PipelineStagesTab } from "@/components/settings/PipelineStagesTab";
 import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
 import { GoalConfigCard } from "@/components/settings/GoalConfigCard";
+import { InteractionTypesTab } from "@/components/settings/InteractionTypesTab";
 
 function SettingsContent() {
     const searchParams = useSearchParams();
@@ -36,10 +37,11 @@ function SettingsContent() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full max-w-3xl grid-cols-4">
+                <TabsList className="grid w-full max-w-3xl grid-cols-5">
                     <TabsTrigger value="custom-fields">Campos</TabsTrigger>
                     <TabsTrigger value="users">Usuários</TabsTrigger>
                     <TabsTrigger value="pipeline">Funil</TabsTrigger>
+                    <TabsTrigger value="interactions">Interações</TabsTrigger>
                     <TabsTrigger value="integrations">Integrações</TabsTrigger>
                 </TabsList>
 
@@ -53,6 +55,10 @@ function SettingsContent() {
 
                 <TabsContent value="pipeline" className="mt-6">
                     <PipelineStagesTab />
+                </TabsContent>
+
+                <TabsContent value="interactions" className="mt-6">
+                    <InteractionTypesTab />
                 </TabsContent>
 
                 <TabsContent value="integrations" className="mt-6">

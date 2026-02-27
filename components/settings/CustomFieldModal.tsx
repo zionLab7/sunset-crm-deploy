@@ -50,6 +50,7 @@ interface CustomFieldModalProps {
         formula?: string | null;
         required: boolean;
         order: number;
+        highlightColor?: string | null;
     };
 }
 
@@ -63,7 +64,8 @@ export function CustomFieldModal({
     const [loading, setLoading] = useState(false);
     const [fieldType, setFieldType] = useState("text");
     const [required, setRequired] = useState(false);
-    const [sourceFields, setSourceFields] = useState<Array<{ id: string; name: string }>>([]);
+    const [highlightColor, setHighlightColor] = useState<string | null>(null);
+    const [sourceFields, setSourceFields] = useState<Array<{ id: string; name: string }>>([]);;
     const [formulaSourceField, setFormulaSourceField] = useState("");
     const [formulaOperation, setFormulaOperation] = useState("percentage_discount");
     const [formulaValue, setFormulaValue] = useState("");
@@ -101,6 +103,7 @@ export function CustomFieldModal({
                 });
                 setFieldType(initialData.fieldType);
                 setRequired(initialData.required);
+                setHighlightColor(initialData.highlightColor || null);
                 if (parsedFormula) {
                     setFormulaSourceField(parsedFormula.sourceField || "");
                     setFormulaOperation(parsedFormula.operation || "percentage_discount");
@@ -119,7 +122,8 @@ export function CustomFieldModal({
                 });
                 setFieldType("text");
                 setRequired(false);
-                setFormulaSourceField("");
+                setHighlightColor(null);
+                setFormulaSourceField("");;
                 setFormulaOperation("percentage_discount");
                 setFormulaValue("");
             }
@@ -184,6 +188,11 @@ export function CustomFieldModal({
             // Adicionar entityType apenas ao criar (POST), não ao editar (PATCH)
             if (!initialData?.id) {
                 payload.entityType = entityType;
+            }
+
+            // highlightColor para campos de PRODUTO
+            if (entityType === "PRODUCT") {
+                payload.highlightColor = highlightColor || null;
             }
 
             const url = initialData?.id
@@ -347,6 +356,39 @@ export function CustomFieldModal({
                             <p className="text-xs text-purple-600">
                                 Este campo será calculado automaticamente e não poderá ser editado manualmente.
                             </p>
+                        </div>
+                    )}
+
+                    {/* Cor de Destaque — apenas para Produtos */}
+                    {entityType === "PRODUCT" && (
+                        <div>
+                            <Label>Cor de Destaque (opcional)</Label>
+                            <p className="text-xs text-muted-foreground mb-2">Destaca este campo visualmente nos cards de produto</p>
+                            <div className="flex gap-2 flex-wrap mt-1">
+                                {[
+                                    { color: null, label: "Nenhuma", cls: "bg-gray-200 border-gray-400" },
+                                    { color: "#ef4444", label: "Vermelho", cls: "bg-red-500" },
+                                    { color: "#f97316", label: "Laranja", cls: "bg-orange-500" },
+                                    { color: "#eab308", label: "Amarelo", cls: "bg-yellow-400" },
+                                    { color: "#22c55e", label: "Verde", cls: "bg-green-500" },
+                                    { color: "#3b82f6", label: "Azul", cls: "bg-blue-500" },
+                                    { color: "#8b5cf6", label: "Roxo", cls: "bg-purple-500" },
+                                ].map(({ color, label, cls }) => (
+                                    <button
+                                        key={label}
+                                        type="button"
+                                        title={label}
+                                        className={`w-7 h-7 rounded-full border-2 ${cls} ring-2 ring-offset-2 transition-all ${highlightColor === color
+                                                ? "ring-primary scale-110"
+                                                : "ring-transparent"
+                                            }`}
+                                        onClick={() => setHighlightColor(color)}
+                                    />
+                                ))}
+                            </div>
+                            {highlightColor && (
+                                <p className="text-xs mt-1" style={{ color: highlightColor }}>● Cor selecionada</p>
+                            )}
                         </div>
                     )}
 

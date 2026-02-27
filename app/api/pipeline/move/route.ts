@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
         }
 
-        // Garantir que temos o usuário real do banco pelo email (evita problema de ID stale)
+        // Buscar usuário real do banco pelo email (evita problema de ID stale)
         const dbUser = await prisma.user.findUnique({
             where: { email: sessionUser.email! },
         });
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { clientId, newStageId, saleData } = body;
+        const { clientId, newStageId } = body;
 
         if (!clientId || !newStageId) {
             return NextResponse.json(
@@ -37,32 +37,15 @@ export async function POST(request: NextRequest) {
             include: { currentStage: true },
         });
 
-        // Montar metadata da interação
-        const metadata: Record<string, any> = {
-            newStage: client.currentStage.name,
-            newStageId: newStageId,
-        };
-
-        // Se houver dados de venda (estágio fechado), incluí-los
-        if (saleData) {
-            metadata.saleValue = saleData.saleValue;
-            metadata.productId = saleData.productId;
-            metadata.productName = saleData.productName;
-            metadata.quantity = saleData.quantity;
-            metadata.notes = saleData.notes;
-        }
-
-        // Determinar descrição da interação
-        const description = saleData
-            ? `✅ Venda fechada! Produto: ${saleData.productName} (x${saleData.quantity}) — U$ ${Number(saleData.saleValue).toFixed(2)}`
-            : `Status alterado para ${client.currentStage.name}`;
-
-        // Registrar interação usando ID real do banco
+        // Registrar interação de mudança de status (SEM dados de venda — vendas são registradas separadamente)
         await prisma.interaction.create({
             data: {
                 type: "STATUS_CHANGE",
-                description,
-                metadata: JSON.stringify(metadata),
+                description: `Status alterado para ${client.currentStage.name}`,
+                metadata: JSON.stringify({
+                    newStage: client.currentStage.name,
+                    newStageId: newStageId,
+                }),
                 clientId: clientId,
                 userId: dbUser.id,
             },

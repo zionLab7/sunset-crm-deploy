@@ -12,6 +12,7 @@ const customFieldSchema = z.object({
     formula: z.string().nullable().optional(),
     required: z.boolean().default(false),
     order: z.number().default(0),
+    highlightColor: z.string().nullable().optional(),
 });
 
 // PATCH - Editar campo customizado
@@ -34,6 +35,7 @@ export async function PATCH(
                 formula: validatedData.formula ?? null,
                 required: validatedData.required,
                 order: validatedData.order,
+                highlightColor: validatedData.highlightColor ?? null,
             },
         });
 

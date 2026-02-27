@@ -19,46 +19,41 @@ export default async function DashboardPage() {
 
     const { id: userId, role: userRole, monthlyGoal, name } = dbUser;
 
-    // Buscar todos os estágios fechados (usa isClosedStage, não nome hardcoded)
-    const closedStages = await prisma.pipelineStage.findMany({
-        where: { isClosedStage: true },
-        select: { id: true },
-    });
-    const closedStageIds = closedStages.map(s => s.id);
+    // ✅ Buscar tipos de interação marcados como venda
+    let saleTypeNames: string[] = [];
+    try {
+        const saleTypes = await (prisma as any).interactionTypeConfig.findMany({
+            where: { isSaleType: true },
+            select: { name: true },
+        });
+        saleTypeNames = saleTypes.map((t: any) => t.name);
+    } catch { /* ignore */ }
+    if (!saleTypeNames.includes("Venda")) saleTypeNames.push("Venda");
 
-    // Buscar clientes fechados com interações de venda
-    const closedClients = await prisma.client.findMany({
+    // ✅ Calcular currentValue APENAS a partir de interações de venda do mês atual
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const saleInteractions = await prisma.interaction.findMany({
         where: {
-            currentStageId: { in: closedStageIds },
-            ...(userRole === "GESTOR" ? {} : { assignedUserId: userId }),
+            type: { in: saleTypeNames },
+            metadata: { contains: "saleValue" },
+            createdAt: { gte: startOfMonth },
+            ...(userRole === "GESTOR" ? {} : { userId }),
         },
-        select: {
-            id: true,
-            potentialValue: true,
-            interactions: {
-                where: { type: "STATUS_CHANGE" },
-                orderBy: { createdAt: "desc" },
-                select: { metadata: true },
-            },
-        },
+        select: { metadata: true },
     });
 
-    // Calcular currentValue: usa saleValue do SaleModal; fallback = potentialValue
     let currentValue = 0;
-    for (const client of closedClients) {
-        let saleValue: number | null = null;
-        for (const interaction of client.interactions) {
-            if (interaction.metadata) {
-                try {
-                    const meta = JSON.parse(interaction.metadata);
-                    if (meta.saleValue != null) {
-                        saleValue = parseFloat(String(meta.saleValue));
-                        break;
-                    }
-                } catch { /* ignora JSON inválido */ }
-            }
+    for (const interaction of saleInteractions) {
+        if (interaction.metadata) {
+            try {
+                const meta = JSON.parse(interaction.metadata);
+                const val = parseFloat(String(meta.saleValue || 0));
+                if (val > 0) currentValue += val;
+            } catch { /* ignore */ }
         }
-        currentValue += saleValue !== null ? saleValue : client.potentialValue;
     }
 
     // Buscar todos os clientes para o funil e leads (sem os dados de interação — performance)
@@ -84,6 +79,7 @@ export default async function DashboardPage() {
     });
     const newLeads = allClients.filter(c => c.currentStageId === prospeccaoStage?.id).length;
 
+    // Taxa de conversão: clientes com ao menos uma venda registrada / total
     // Tarefas recentes
     const recentTasks = await prisma.task.findMany({
         where: userRole === "GESTOR" ? {} : { userId },

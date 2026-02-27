@@ -2,11 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InteractionModal } from "@/components/clients/interaction-modal";
+import { TaskModal } from "@/components/calendar/task-modal";
 import {
     MessageCircle,
     Mail,
@@ -23,6 +25,9 @@ import {
     Check,
     Archive,
     ArchiveRestore,
+    CalendarPlus,
+    ExternalLink,
+    ClipboardList,
 } from "lucide-react";
 import { formatCurrency, formatCNPJ, formatPhone, getWhatsAppLink, getRelativeTime } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -68,70 +73,91 @@ interface ClientDossierProps {
         email: string | null;
         potentialValue: number;
         archivedFromPipeline?: boolean;
-        currentStage: {
-            id: string;
-            name: string;
-            color: string;
-        };
-        assignedUser: {
-            id: string;
-            name: string;
-            email: string;
-        };
+        assignedUserId: string;
+        currentStage: { id: string; name: string; color: string };
+        assignedUser: { id: string; name: string; email: string };
         interactions: Array<{
             id: string;
             type: string;
             description: string;
+            metadata?: string | null;
             createdAt: string | Date;
-            user: {
-                id: string;
-                name: string;
-            };
+            user: { id: string; name: string };
         }>;
         tasks: Array<{
             id: string;
             title: string;
             status: string;
             dueDate: string | Date;
-            user: {
-                id: string;
-                name: string;
-            };
+            user: { id: string; name: string };
         }>;
         products: Array<{
             id: string;
-            product: {
-                id: string;
-                name: string;
-                stockCode: string;
-            };
+            product: { id: string; name: string; stockCode: string };
+        }>;
+        customFieldValues?: Array<{
+            id: string;
+            value: string;
+            customField: { id: string; name: string; fieldType: string };
         }>;
     };
 }
 
 const INTERACTION_ICONS: Record<string, { icon: any; label: string; color: string }> = {
+    // Legacy uppercase keys
     CALL: { icon: PhoneCall, label: "Ligação", color: "text-blue-600" },
     VISIT: { icon: Building, label: "Visita", color: "text-purple-600" },
     EMAIL: { icon: Send, label: "Email", color: "text-green-600" },
     NOTE: { icon: FileText, label: "Nota", color: "text-gray-600" },
-    STATUS_CHANGE: { icon: ArrowRightLeft, label: "Status", color: "text-orange-600" },
+    STATUS_CHANGE: { icon: ArrowRightLeft, label: "Alteração de Status", color: "text-orange-600" },
+    // Portuguese names from custom interaction types
+    "Ligação": { icon: PhoneCall, label: "Ligação", color: "text-blue-600" },
+    "Visita": { icon: Building, label: "Visita", color: "text-purple-600" },
+    "Email": { icon: Send, label: "Email", color: "text-green-600" },
+    "Nota": { icon: FileText, label: "Nota", color: "text-gray-600" },
+    "Venda": { icon: Package, label: "Venda", color: "text-amber-600" },
 };
+
+function getInteractionConfig(type: string) {
+    return INTERACTION_ICONS[type] || { icon: FileText, label: type, color: "text-gray-600" };
+}
 
 export function ClientDossier({ client }: ClientDossierProps) {
     const router = useRouter();
+    const { data: session } = useSession();
+    const currentUserId = (session?.user as any)?.id;
+    const userRole = (session?.user as any)?.role;
+    const isGestor = userRole === "GESTOR";
+    // Contact buttons visible if gestor OR if this vendedor is the assigned user
+    const canSeeContactButtons = isGestor || client.assignedUserId === currentUserId;
+
     const [interactionModalOpen, setInteractionModalOpen] = useState(false);
+    const [taskModalOpen, setTaskModalOpen] = useState(false);
     const [pabxUrl, setPabxUrl] = useState<string | null>(null);
+    const [emailUrl, setEmailUrl] = useState<string | null>(null);
     const [isArchived, setIsArchived] = useState(client.archivedFromPipeline || false);
     const [archiving, setArchiving] = useState(false);
+    // Clients and users for task modal
+    const [taskClients, setTaskClients] = useState<Array<{ id: string; name: string }>>([]);
+    const [taskUsers, setTaskUsers] = useState<Array<{ id: string; name: string }>>([]);
 
     useEffect(() => {
-        fetch("/api/admin/system-config?key=pabxUrlTemplate")
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.config?.value) setPabxUrl(data.config.value);
-            })
-            .catch(() => { });
+        Promise.all([
+            fetch("/api/admin/system-config?key=pabxUrlTemplate").then((r) => r.json()),
+            fetch("/api/admin/system-config?key=emailUrlTemplate").then((r) => r.json()),
+            fetch("/api/clients").then((r) => r.json()),
+            fetch("/api/users").then((r) => r.json()),
+        ]).then(([pabx, email, clientsData, usersData]) => {
+            if (pabx.config?.value) setPabxUrl(pabx.config.value);
+            if (email.config?.value) setEmailUrl(email.config.value);
+            setTaskClients(clientsData.clients?.map((c: any) => ({ id: c.id, name: c.name })) || []);
+            setTaskUsers(usersData.users?.map((u: any) => ({ id: u.id, name: u.name })) || []);
+        }).catch(() => { });
     }, []);
+
+    const handleRequestTask = () => {
+        setTaskModalOpen(true);
+    };
 
     const handleToggleArchive = async () => {
         setArchiving(true);
@@ -237,12 +263,12 @@ export function ClientDossier({ client }: ClientDossierProps) {
 
                         <Separator className="my-4" />
 
-                        {/* Produtos de Interesse */}
+                        {/* Produtos que Compra */}
                         {client.products && client.products.length > 0 && (
                             <div className="mb-4">
                                 <p className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                                     <Package className="h-4 w-4" />
-                                    Produtos de Interesse
+                                    Produtos que Compra
                                 </p>
                                 <div className="flex flex-wrap gap-2">
                                     {client.products.map((cp) => (
@@ -255,11 +281,28 @@ export function ClientDossier({ client }: ClientDossierProps) {
                             </div>
                         )}
 
+                        {/* Custom Field Values */}
+                        {client.customFieldValues && client.customFieldValues.length > 0 && (
+                            <div className="mb-4">
+                                <p className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                                    <ClipboardList className="h-4 w-4" />
+                                    Informações Adicionais
+                                </p>
+                                <div className="space-y-1.5">
+                                    {client.customFieldValues.map((cfv) => (
+                                        <div key={cfv.id} className="flex items-start justify-between gap-2">
+                                            <span className="text-xs text-muted-foreground whitespace-nowrap">{cfv.customField.name}:</span>
+                                            <span className="text-xs font-medium text-right break-words">{cfv.value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <Separator className="my-4" />
+                            </div>
+                        )}
+
                         {/* Contatos */}
                         <div className="space-y-3">
-                            <p className="text-sm font-medium text-muted-foreground">
-                                Contatos
-                            </p>
+                            <p className="text-sm font-medium text-muted-foreground">Contatos</p>
 
                             {client.phone && (
                                 <div className="flex items-center gap-2">
@@ -267,7 +310,7 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                     <span className="text-sm">{formatPhone(client.phone)}</span>
                                     <div className="ml-auto flex items-center gap-0.5">
                                         <CopyButton text={client.phone} label="Telefone" />
-                                        {pabxUrl && (
+                                        {canSeeContactButtons && pabxUrl && (
                                             <a
                                                 href={pabxUrl.replace("{phone}", client.phone.replace(/\D/g, ""))}
                                                 target="_blank"
@@ -278,15 +321,17 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                                 </Button>
                                             </a>
                                         )}
-                                        <a
-                                            href={getWhatsAppLink(client.phone)}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                        >
-                                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="WhatsApp">
-                                                <MessageCircle className="h-4 w-4 text-green-600" />
-                                            </Button>
-                                        </a>
+                                        {canSeeContactButtons && (
+                                            <a
+                                                href={getWhatsAppLink(client.phone)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="WhatsApp">
+                                                    <MessageCircle className="h-4 w-4 text-green-600" />
+                                                </Button>
+                                            </a>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -300,8 +345,19 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                     >
                                         {client.email}
                                     </a>
-                                    <div className="ml-auto">
+                                    <div className="ml-auto flex items-center gap-0.5">
                                         <CopyButton text={client.email} label="Email" />
+                                        {canSeeContactButtons && emailUrl && (
+                                            <a
+                                                href={emailUrl.replace("{email}", encodeURIComponent(client.email))}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Abrir email">
+                                                    <ExternalLink className="h-4 w-4 text-indigo-600" />
+                                                </Button>
+                                            </a>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -334,10 +390,20 @@ export function ClientDossier({ client }: ClientDossierProps) {
             <div className="md:col-span-2">
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-semibold">Timeline de Atividades</h3>
-                    <Button onClick={() => setInteractionModalOpen(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Nova Interação
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setTaskModalOpen(true)}
+                            size="sm"
+                        >
+                            <CalendarPlus className="h-4 w-4 mr-2" />
+                            Nova Tarefa
+                        </Button>
+                        <Button onClick={() => setInteractionModalOpen(true)} size="sm">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Nova Interação
+                        </Button>
+                    </div>
                 </div>
 
                 {/* Timeline */}
@@ -361,8 +427,19 @@ export function ClientDossier({ client }: ClientDossierProps) {
                         </Card>
                     ) : (
                         client.interactions.map((interaction) => {
-                            const config = INTERACTION_ICONS[interaction.type] || INTERACTION_ICONS.NOTE;
+                            const config = getInteractionConfig(interaction.type);
                             const Icon = config.icon;
+
+                            // Parse sale metadata if present
+                            let saleMeta: { saleValue?: number; productName?: string; quantity?: number; notes?: string } | null = null;
+                            if (interaction.metadata) {
+                                try {
+                                    const parsed = JSON.parse(interaction.metadata);
+                                    if (parsed.saleValue != null && parseFloat(String(parsed.saleValue)) > 0) {
+                                        saleMeta = parsed;
+                                    }
+                                } catch { /* ignore */ }
+                            }
 
                             return (
                                 <Card key={interaction.id} className="hover:shadow-md transition-shadow">
@@ -389,6 +466,28 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                                 <p className="text-sm text-gray-700 whitespace-pre-wrap">
                                                     {interaction.description}
                                                 </p>
+                                                {/* Sale metadata card */}
+                                                {saleMeta && (
+                                                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg flex flex-wrap gap-3 text-sm">
+                                                        {saleMeta.productName && (
+                                                            <span className="flex items-center gap-1">
+                                                                <Package className="h-3.5 w-3.5 text-amber-600" />
+                                                                <span className="font-medium">{saleMeta.productName}</span>
+                                                                {saleMeta.quantity && saleMeta.quantity > 1 && (
+                                                                    <span className="text-muted-foreground">× {saleMeta.quantity}</span>
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                        {saleMeta.saleValue != null && (
+                                                            <span className="flex items-center gap-1 font-semibold text-green-700">
+                                                                💰 {formatCurrency(saleMeta.saleValue)}
+                                                            </span>
+                                                        )}
+                                                        {saleMeta.notes && (
+                                                            <span className="w-full text-xs text-muted-foreground italic">{saleMeta.notes}</span>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </CardContent>
@@ -402,9 +501,23 @@ export function ClientDossier({ client }: ClientDossierProps) {
             {/* Modal de Nova Interação */}
             <InteractionModal
                 clientId={client.id}
+                clientName={client.name}
                 open={interactionModalOpen}
                 onClose={() => setInteractionModalOpen(false)}
                 onSuccess={() => router.refresh()}
+                onRequestTask={handleRequestTask}
+            />
+
+            {/* Modal de Nova Tarefa (pré-preenchido com este cliente) */}
+            <TaskModal
+                open={taskModalOpen}
+                onClose={() => setTaskModalOpen(false)}
+                clients={taskClients}
+                users={taskUsers}
+                userRole={userRole || "VENDEDOR"}
+                currentUserId={currentUserId || ""}
+                initialData={undefined}
+                preselectedClientId={client.id}
             />
         </div>
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     Dialog,
     DialogContent,
@@ -12,14 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { ShoppingCart, DollarSign } from "lucide-react";
+import { ShoppingCart, DollarSign, Search, X, Check } from "lucide-react";
 
 interface Product {
     id: string;
@@ -50,23 +43,38 @@ export function SaleModal({
 }: SaleModalProps) {
     const [products, setProducts] = useState<Product[]>([]);
     const [productId, setProductId] = useState("");
+    const [productSearch, setProductSearch] = useState("");
+    const [showDropdown, setShowDropdown] = useState(false);
     const [quantity, setQuantity] = useState("1");
     const [saleValue, setSaleValue] = useState("");
     const [notes, setNotes] = useState("");
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const searchRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (open) {
             fetchProducts();
-            // Reset form
             setProductId("");
+            setProductSearch("");
+            setShowDropdown(false);
             setQuantity("1");
             setSaleValue("");
             setNotes("");
             setErrors({});
         }
     }, [open]);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+                setShowDropdown(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
 
     const fetchProducts = async () => {
         try {
@@ -76,6 +84,24 @@ export function SaleModal({
         } catch (err) {
             console.error("Erro ao buscar produtos:", err);
         }
+    };
+
+    const filteredProducts = products.filter((p) => {
+        const q = productSearch.toLowerCase();
+        return p.name.toLowerCase().includes(q) || p.stockCode.toLowerCase().includes(q);
+    });
+
+    const selectedProduct = products.find((p) => p.id === productId);
+
+    const handleSelectProduct = (p: Product) => {
+        setProductId(p.id);
+        setProductSearch("");
+        setShowDropdown(false);
+    };
+
+    const handleClearProduct = () => {
+        setProductId("");
+        setProductSearch("");
     };
 
     const validate = () => {
@@ -89,7 +115,6 @@ export function SaleModal({
 
     const handleConfirm = () => {
         if (!validate()) return;
-        const selectedProduct = products.find((p) => p.id === productId);
         setLoading(true);
         onConfirm({
             productId,
@@ -115,21 +140,58 @@ export function SaleModal({
                 </DialogHeader>
 
                 <div className="space-y-4 py-2">
-                    {/* Produto */}
+                    {/* Produto — busca com filtro */}
                     <div>
                         <Label>Produto vendido *</Label>
-                        <Select value={productId} onValueChange={setProductId}>
-                            <SelectTrigger className={errors.productId ? "border-destructive" : ""}>
-                                <SelectValue placeholder="Selecione o produto..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {products.map((p) => (
-                                    <SelectItem key={p.id} value={p.id}>
-                                        {p.name} — {p.stockCode}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+
+                        {selectedProduct ? (
+                            /* Produto selecionado — badge verde com botão de remover */
+                            <div className={`flex items-center justify-between mt-1 px-3 py-2 border rounded-md bg-green-50 ${errors.productId ? "border-destructive" : "border-green-300"}`}>
+                                <div className="flex items-center gap-2 text-sm">
+                                    <Check className="h-4 w-4 text-green-600 flex-shrink-0" />
+                                    <span className="font-medium">{selectedProduct.name}</span>
+                                    <span className="text-muted-foreground">— {selectedProduct.stockCode}</span>
+                                </div>
+                                <button type="button" onClick={handleClearProduct} className="text-muted-foreground hover:text-foreground ml-2 flex-shrink-0">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
+                        ) : (
+                            /* Campo de busca + dropdown */
+                            <div ref={searchRef} className="relative mt-1">
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Buscar produto por nome ou código..."
+                                        value={productSearch}
+                                        onChange={(e) => { setProductSearch(e.target.value); setShowDropdown(true); }}
+                                        onFocus={() => setShowDropdown(true)}
+                                        className={`pl-9 ${errors.productId ? "border-destructive" : ""}`}
+                                        autoComplete="off"
+                                    />
+                                </div>
+                                {showDropdown && (
+                                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg max-h-52 overflow-y-auto">
+                                        {filteredProducts.length === 0 ? (
+                                            <div className="px-3 py-2 text-sm text-muted-foreground">Nenhum produto encontrado</div>
+                                        ) : (
+                                            filteredProducts.map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-muted transition-colors flex items-center gap-2 border-b last:border-0"
+                                                    onClick={() => handleSelectProduct(p)}
+                                                >
+                                                    <span className="font-medium">{p.name}</span>
+                                                    <span className="text-muted-foreground text-xs">— {p.stockCode}</span>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {errors.productId && (
                             <p className="text-xs text-destructive mt-1">{errors.productId}</p>
                         )}

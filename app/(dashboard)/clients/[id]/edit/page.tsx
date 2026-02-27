@@ -82,6 +82,11 @@ export default async function EditClientPage({
     }
 
     // Mapear dados do cliente para o formato do formulário
+    const existingCustomFieldValues: Record<string, string> = {};
+    (client as any).customFieldValues?.forEach((cfv: any) => {
+        existingCustomFieldValues[cfv.customFieldId] = cfv.value;
+    });
+
     const initialData = {
         name: client.name,
         cnpj: client.cnpj ?? undefined,
@@ -91,6 +96,7 @@ export default async function EditClientPage({
         currentStageId: client.currentStageId,
         assignedUserId: client.assignedUserId || "",
         productIds: (client as any).products.map((cp: any) => cp.productId),
+        customFieldValues: existingCustomFieldValues,
     };
 
     return (

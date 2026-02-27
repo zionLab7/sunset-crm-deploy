@@ -21,7 +21,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
+import { EyeOff, Lock, Settings } from "lucide-react";
 
 const productSchema = z.object({
     name: z.string().min(3, "Nome deve ter pelo menos 3 caracteres"),
@@ -61,6 +63,10 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
     const [loading, setLoading] = useState(false);
     const [customFields, setCustomFields] = useState<CustomField[]>([]);
     const [customFieldValues, setCustomFieldValues] = useState<Record<string, string>>({});
+    // Per-product field visibility (GESTOR only)
+    const [hiddenFields, setHiddenFields] = useState<string[]>([]);
+    const [loadingVisibility, setLoadingVisibility] = useState(false);
+    const [showVisibilitySection, setShowVisibilitySection] = useState(false);
 
     const isGestor = userRole === "GESTOR";
 
@@ -81,6 +87,24 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
             .catch(() => { });
     }, [open]);
 
+    // Fetch existing visibility config when editing an existing product
+    useEffect(() => {
+        if (open && isGestor && initialData?.id) {
+            setLoadingVisibility(true);
+            fetch(`/api/admin/product-visibility/${initialData.id}`)
+                .then(r => r.json())
+                .then(d => {
+                    // API returns { visibilities: [{ fieldKey, hiddenForRole, ... }] }
+                    const keys = (d.visibilities || []).map((v: any) => v.fieldKey as string);
+                    setHiddenFields(keys);
+                })
+                .catch(() => setHiddenFields([]))
+                .finally(() => setLoadingVisibility(false));
+        } else if (open) {
+            setHiddenFields([]);
+        }
+    }, [open, initialData?.id, isGestor]);
+
     useEffect(() => {
         if (open) {
             reset({
@@ -91,6 +115,7 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
             const vals: Record<string, string> = {};
             initialData?.customFieldValues?.forEach(cfv => { vals[cfv.customFieldId] = cfv.value; });
             setCustomFieldValues(vals);
+            setShowVisibilitySection(false);
         }
     }, [open, initialData, reset]);
 
@@ -118,6 +143,16 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
             const responseData = await res.json();
             if (!res.ok) throw new Error(responseData.error || "Erro ao salvar produto");
 
+            // Save visibility settings if changed (GESTOR editing existing product)
+            const productId = initialData?.id || responseData.product?.id;
+            if (isGestor && productId) {
+                await fetch(`/api/admin/product-visibility/${productId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ hiddenFields }),
+                }).catch(() => { });
+            }
+
             toast({
                 title: initialData?.id ? "✅ Produto atualizado!" : "✅ Produto criado!",
                 description: `${data.name} foi salvo com sucesso.`,
@@ -132,6 +167,12 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
         } finally {
             setLoading(false);
         }
+    };
+
+    const toggleHiddenField = (key: string) => {
+        setHiddenFields(prev =>
+            prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+        );
     };
 
     const renderCustomField = (field: CustomField) => {
@@ -160,7 +201,6 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
         }
     };
 
-    // Campos customizados visíveis: excluir calculados (exibidos separado) — todos os outros visíveis para qualquer role
     const visibleCustomFields = customFields.filter(f => f.fieldType !== "calculated");
 
     return (
@@ -171,7 +211,7 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    {/* Campos fixos — visíveis para todos */}
+                    {/* Campos fixos */}
                     <div>
                         <Label htmlFor="name">Nome do Produto *</Label>
                         <Input id="name" {...register("name")} placeholder="Ex: Café Premium 1kg" />
@@ -185,32 +225,9 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
                         <p className="text-xs text-muted-foreground mt-1">Mesmo código do sistema de estoque da empresa</p>
                     </div>
 
-                    {/* Preço de Custo — SOMENTE para Gestores */}
-                    {isGestor && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
-                            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                                🔒 Informação de Custo (Gestor)
-                            </p>
-                            <div>
-                                <Label htmlFor="costPrice" className="text-amber-800">Preço de Custo (U$)</Label>
-                                <div className="relative mt-1">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm select-none">U$</span>
-                                    <Input
-                                        id="costPrice"
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
-                                        {...register("costPrice")}
-                                        placeholder="0.00"
-                                        className="pl-10 border-amber-300"
-                                    />
-                                </div>
-                                <p className="text-xs text-amber-600 mt-1">Visível apenas para gestores.</p>
-                            </div>
-                        </div>
-                    )}
 
-                    {/* Campos Customizados — visíveis para TODOS (vendedores inclusive) */}
+
+                    {/* Campos Customizados */}
                     {visibleCustomFields.length > 0 && (
                         <>
                             <div className="border-t pt-4">
@@ -225,6 +242,53 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
                                 </div>
                             ))}
                         </>
+                    )}
+
+                    {/* Visibilidade para Vendedores — GESTOR ONLY, edit mode */}
+                    {isGestor && initialData?.id && (
+                        <div className="border-t pt-4">
+                            <button
+                                type="button"
+                                className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground w-full mb-3"
+                                onClick={() => setShowVisibilitySection(!showVisibilitySection)}
+                            >
+                                <Settings className="h-4 w-4" />
+                                Visibilidade para Vendedores
+                                <span className="text-xs ml-auto">{showVisibilitySection ? "▲" : "▼"}</span>
+                            </button>
+
+                            {showVisibilitySection && (
+                                <div className="space-y-2 p-3 bg-slate-50 border rounded-lg">
+                                    <p className="text-xs text-muted-foreground mb-3">
+                                        Campos marcados ficarão ocultos para Vendedores neste produto.
+                                    </p>
+                                    {loadingVisibility ? (
+                                        <div className="h-8 flex items-center justify-center">
+                                            <div className="animate-spin h-4 w-4 border-b-2 border-primary rounded-full" />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Custom fields */}
+                                            {visibleCustomFields.map(field => (
+                                                <div key={field.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                                                    <div className="flex items-center gap-2">
+                                                        {hiddenFields.includes(field.id) && <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
+                                                        <span className="text-sm">{field.name}</span>
+                                                    </div>
+                                                    <Switch
+                                                        checked={hiddenFields.includes(field.id)}
+                                                        onCheckedChange={() => toggleHiddenField(field.id)}
+                                                    />
+                                                </div>
+                                            ))}
+                                            <p className="text-xs text-muted-foreground pt-1">
+                                                {hiddenFields.length === 0 ? "Nenhum campo oculto" : `${hiddenFields.length} campo(s) oculto(s) para vendedores`}
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     {/* Ações */}

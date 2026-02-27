@@ -20,9 +20,11 @@ RUN \
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+ARG CACHE_BUST=1
 COPY . .
 
-# Generate Prisma client
+# Generate Prisma client (engine binary already cached in node_modules from deps)
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 RUN npx prisma generate
 
 ENV NEXT_TELEMETRY_DISABLED=1

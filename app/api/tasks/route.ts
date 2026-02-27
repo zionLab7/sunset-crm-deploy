@@ -12,8 +12,11 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
         }
 
-        const userId = (user as any).id;
-        const userRole = (user as any).role;
+        const dbUser = await prisma.user.findUnique({ where: { email: user.email as string } });
+        if (!dbUser) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 401 });
+
+        const userId = dbUser.id;
+        const userRole = dbUser.role;
 
         // Pegar parâmetros de busca
         const searchParams = request.nextUrl.searchParams;
@@ -25,13 +28,14 @@ export async function GET(request: NextRequest) {
         // Construir where clause
         const where: any = {};
 
-        // Filtrar por role
+        // Filtrar por role — GESTOR vê todas, vendedor vê só as suas
         if (userRole !== "GESTOR") {
             where.userId = userId;
         }
 
-        // Filtro por status
-        if (status && status !== "all") {
+        // Filtro por status — só aplica se for um valor válido do enum TaskStatus
+        const VALID_STATUSES = ["PENDENTE", "CONCLUIDA", "ATRASADA"];
+        if (status && VALID_STATUSES.includes(status)) {
             where.status = status;
         }
 
@@ -90,29 +94,21 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
         }
 
-        const userId = (user as any).id;
-        const userRole = (user as any).role;
+        const dbUser = await prisma.user.findUnique({ where: { email: user.email as string } });
+        if (!dbUser) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 401 });
+
+        const userId = dbUser.id;
+        const userRole = dbUser.role;
         const body = await request.json();
 
-        const { title, description, clientId, dueDate, status, assignedUserId } = body;
+        const { title, description, clientId, dueDate, dueTime, status, assignedUserId } = body;
 
-        // Validações
         if (!title || !dueDate) {
-            return NextResponse.json(
-                { error: "Título e data são obrigatórios" },
-                { status: 400 }
-            );
+            return NextResponse.json({ error: "Título e data são obrigatórios" }, { status: 400 });
         }
 
-        // Se não for gestor, só pode criar tarefa para si mesmo
-        const finalUserId = userRole === "GESTOR" && assignedUserId
-            ? assignedUserId
-            : userId;
-
-        // Validar e limpar clientId
-        const cleanClientId = clientId && clientId !== "none" && clientId.trim() !== ""
-            ? clientId
-            : null;
+        const finalUserId = userRole === "GESTOR" && assignedUserId ? assignedUserId : userId;
+        const cleanClientId = clientId && clientId !== "none" && clientId.trim() !== "" ? clientId : null;
 
         const task = await prisma.task.create({
             data: {
@@ -120,6 +116,7 @@ export async function POST(request: NextRequest) {
                 description: description && description.trim() !== "" ? description : null,
                 clientId: cleanClientId,
                 dueDate: new Date(dueDate),
+                dueTime: dueTime || null,
                 status: status || "PENDENTE",
                 userId: finalUserId,
             },

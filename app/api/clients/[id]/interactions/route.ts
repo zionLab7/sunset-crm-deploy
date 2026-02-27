@@ -15,12 +15,22 @@ export async function POST(
             return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
         }
 
-        const userId = (user as any).id;
-        const userRole = (user as any).role;
+        // Buscar usuário real do banco pelo email (evita FK inválido por session ID stale)
+        const dbUser = await prisma.user.findUnique({
+            where: { email: user.email as string },
+            select: { id: true, role: true },
+        });
+
+        if (!dbUser) {
+            return NextResponse.json({ error: "Usuário não encontrado" }, { status: 401 });
+        }
+
+        const userId = dbUser.id;
+        const userRole = dbUser.role;
         const clientId = params.id;
         const body = await request.json();
 
-        const { type, description } = body;
+        const { type, description, metadata } = body;
 
         // Validações
         if (!type || !description) {
@@ -49,13 +59,14 @@ export async function POST(
             );
         }
 
-        // Criar interação
+        // Criar interação (com metadata opcional para registros de venda)
         const interaction = await prisma.interaction.create({
             data: {
                 type,
                 description,
                 clientId,
                 userId,
+                ...(metadata ? { metadata } : {}),
             },
             include: {
                 user: {
