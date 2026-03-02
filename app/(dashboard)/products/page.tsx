@@ -300,14 +300,12 @@ export default function ProductsPage() {
                                                 );
                                             })}
 
-                                        {/* Campos calculados — usa o valor pré-computado pelo servidor */}
+                                        {/* Campos calculados — usa APENAS o valor pré-computado pelo servidor (já filtrado por visibilidade) */}
                                         {customFieldDefs
                                             .filter((fd) => fd.fieldType === "calculated")
                                             .map((fd) => {
-                                                // Usar valor pré-computado do servidor (visível para todos os roles)
-                                                const computed =
-                                                    product.calculatedFieldValues?.[fd.id] ||
-                                                    computeCalculatedValue(product, fd); // fallback client-side (gestor)
+                                                // Apenas usar valor pré-computado do servidor — se ausente, o campo está oculto para este role
+                                                const computed = product.calculatedFieldValues?.[fd.id];
                                                 if (!computed) return null;
                                                 return (
                                                     <div key={fd.id} className="text-sm flex items-center gap-1">
