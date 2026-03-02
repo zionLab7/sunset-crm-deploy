@@ -202,6 +202,8 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
     };
 
     const visibleCustomFields = customFields.filter(f => f.fieldType !== "calculated");
+    // For visibility control, we include ALL fields (including calculated) so gestor can hide them
+    const allCustomFieldsForVisibility = customFields;
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
@@ -268,12 +270,15 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
                                         </div>
                                     ) : (
                                         <>
-                                            {/* Custom fields */}
-                                            {visibleCustomFields.map(field => (
+                                            {/* Custom fields — todos, incluindo calculados */}
+                                            {allCustomFieldsForVisibility.map(field => (
                                                 <div key={field.id} className="flex items-center justify-between py-1.5 border-b last:border-0">
                                                     <div className="flex items-center gap-2">
                                                         {hiddenFields.includes(field.id) && <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />}
                                                         <span className="text-sm">{field.name}</span>
+                                                        {field.fieldType === "calculated" && (
+                                                            <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 rounded">calculado</span>
+                                                        )}
                                                     </div>
                                                     <Switch
                                                         checked={hiddenFields.includes(field.id)}

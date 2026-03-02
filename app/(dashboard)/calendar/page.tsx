@@ -219,6 +219,7 @@ export default function CalendarPage() {
                         tasks={tasks}
                         onEdit={handleEditTask}
                         onRefresh={fetchData}
+                        userRole={(session?.user as any)?.role as string}
                     />
                 </TabsContent>
             </Tabs>

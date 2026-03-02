@@ -32,6 +32,7 @@ interface TaskListProps {
     tasks: Task[];
     onEdit: (task: Task) => void;
     onRefresh: () => void;
+    userRole?: string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; variant: any }> = {
@@ -52,10 +53,11 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; variant: any
     },
 };
 
-export function TaskList({ tasks, onEdit, onRefresh }: TaskListProps) {
+export function TaskList({ tasks, onEdit, onRefresh, userRole }: TaskListProps) {
     const { confirm, ConfirmDialog } = useConfirm();
     const router = useRouter();
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const isGestor = userRole === "GESTOR";
 
     const handleToggleComplete = async (task: Task) => {
         try {
@@ -194,14 +196,16 @@ export function TaskList({ tasks, onEdit, onRefresh }: TaskListProps) {
                                             >
                                                 <Edit className="h-4 w-4" />
                                             </Button>
-                                            <Button
-                                                size="icon"
-                                                variant="ghost"
-                                                onClick={() => handleDeleteClick(task.id, task.title)}
-                                                disabled={deletingId === task.id}
-                                            >
-                                                <Trash2 className="h-4 w-4 text-red-500" />
-                                            </Button>
+                                            {isGestor && (
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    onClick={() => handleDeleteClick(task.id, task.title)}
+                                                    disabled={deletingId === task.id}
+                                                >
+                                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                                </Button>
+                                            )}
                                         </div>
                                     </div>
 
