@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { KanbanBoard } from "@/components/kanban/board";
 import { toast } from "@/hooks/use-toast";
 import { DropResult } from "@hello-pangea/dnd";
@@ -25,6 +26,8 @@ interface Column {
 
 export default function PipelinePage() {
     const router = useRouter();
+    const { data: session } = useSession();
+    const isGestor = (session?.user as any)?.role === "GESTOR";
     const [columns, setColumns] = useState<Column[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -152,10 +155,12 @@ export default function PipelinePage() {
                     </p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => router.push("/settings?tab=pipeline")}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Configurar Funil
-                    </Button>
+                    {isGestor && (
+                        <Button variant="outline" onClick={() => router.push("/settings?tab=pipeline")}>
+                            <Settings className="h-4 w-4 mr-2" />
+                            Configurar Funil
+                        </Button>
+                    )}
                     <Button onClick={() => router.push("/clients/new")}>
                         <Plus className="h-4 w-4 mr-2" />
                         Novo Cliente
@@ -171,7 +176,7 @@ export default function PipelinePage() {
                     </p>
                 </div>
             ) : (
-                <KanbanBoard columns={columns} onDragEnd={handleDragEnd} onArchive={handleArchive} />
+                <KanbanBoard columns={columns} onDragEnd={handleDragEnd} />
             )}
         </div>
     );

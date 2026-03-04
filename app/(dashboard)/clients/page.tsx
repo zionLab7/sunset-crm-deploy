@@ -21,7 +21,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, MessageCircle, FileSpreadsheet, Trash2 } from "lucide-react";
+import { Plus, Search, MessageCircle, FileSpreadsheet, Trash2, CheckSquare } from "lucide-react";
 import { formatCurrency, formatCNPJ, getWhatsAppLink } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ImportClientsModal } from "@/components/clients/import-clients-modal";
@@ -59,6 +59,7 @@ export default function ClientsPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [selectedStage, setSelectedStage] = useState<string>("all");
     const [importModalOpen, setImportModalOpen] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
 
     useEffect(() => {
@@ -148,6 +149,50 @@ export default function ClientsPage() {
         }
     };
 
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        const confirmed = window.confirm(
+            `⚠️ EXCLUSÃO EM LOTE\n\nVocê está prestes a excluir ${selectedIds.size} cliente(s) permanentemente.\nEsta ação NÃO pode ser desfeita.\n\nDeseja continuar?`
+        );
+        if (!confirmed) return;
+
+        let successCount = 0;
+        let errorCount = 0;
+        for (const id of selectedIds) {
+            try {
+                const res = await fetch(`/api/clients/${id}`, { method: "DELETE" });
+                if (res.ok) successCount++;
+                else errorCount++;
+            } catch {
+                errorCount++;
+            }
+        }
+
+        setSelectedIds(new Set());
+        fetchData();
+        toast({
+            title: `✅ ${successCount} cliente(s) excluído(s)`,
+            description: errorCount > 0 ? `${errorCount} erro(s) durante a exclusão.` : undefined,
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filteredClients.length && filteredClients.length > 0) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredClients.map((c) => c.id)));
+        }
+    };
+
+    const toggleSelectOne = (id: string) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -166,7 +211,17 @@ export default function ClientsPage() {
                         Gerencie seus clientes e acompanhe o histórico
                     </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                    {isGestor && selectedIds.size > 0 && (
+                        <Button
+                            variant="destructive"
+                            onClick={handleBulkDelete}
+                            className="flex items-center gap-2"
+                        >
+                            <Trash2 className="h-4 w-4" />
+                            Excluir {selectedIds.size} cliente{selectedIds.size !== 1 ? "s" : ""}
+                        </Button>
+                    )}
                     <Button variant="outline" onClick={() => setImportModalOpen(true)}>
                         <FileSpreadsheet className="h-4 w-4 mr-2" />
                         Importar Planilha
@@ -228,6 +283,17 @@ export default function ClientsPage() {
                     <Table>
                         <TableHeader>
                             <TableRow>
+                                {isGestor && (
+                                    <TableHead className="w-10">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-gray-300 cursor-pointer"
+                                            checked={selectedIds.size === filteredClients.length && filteredClients.length > 0}
+                                            onChange={toggleSelectAll}
+                                            title="Selecionar todos"
+                                        />
+                                    </TableHead>
+                                )}
                                 <TableHead>Nome</TableHead>
                                 <TableHead>CNPJ</TableHead>
                                 <TableHead>Estágio</TableHead>
@@ -240,9 +306,19 @@ export default function ClientsPage() {
                             {filteredClients.map((client) => (
                                 <TableRow
                                     key={client.id}
-                                    className="cursor-pointer"
+                                    className={`cursor-pointer ${selectedIds.has(client.id) ? "bg-blue-50" : ""}`}
                                     onClick={() => router.push(`/clients/${client.id}`)}
                                 >
+                                    {isGestor && (
+                                        <TableCell onClick={(e) => { e.stopPropagation(); toggleSelectOne(client.id); }}>
+                                            <input
+                                                type="checkbox"
+                                                className="rounded border-gray-300 cursor-pointer"
+                                                checked={selectedIds.has(client.id)}
+                                                onChange={() => toggleSelectOne(client.id)}
+                                            />
+                                        </TableCell>
+                                    )}
                                     <TableCell className="font-medium">{client.name}</TableCell>
                                     <TableCell className="text-muted-foreground">
                                         {client.cnpj ? formatCNPJ(client.cnpj) : "—"}

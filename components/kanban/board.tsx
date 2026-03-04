@@ -4,7 +4,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, Archive } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { formatCurrency, getWhatsAppLink } from "@/lib/utils";
 
 interface Client {
@@ -24,22 +24,21 @@ interface Column {
 interface KanbanBoardProps {
     columns: Column[];
     onDragEnd: (result: DropResult) => void;
-    onArchive?: (clientId: string, clientName: string) => void;
 }
 
-export function KanbanBoard({ columns, onDragEnd, onArchive }: KanbanBoardProps) {
+export function KanbanBoard({ columns, onDragEnd }: KanbanBoardProps) {
     return (
         <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex gap-4 overflow-x-auto pb-4">
                 {columns.map((column) => (
-                    <KanbanColumn key={column.id} column={column} onArchive={onArchive} />
+                    <KanbanColumn key={column.id} column={column} />
                 ))}
             </div>
         </DragDropContext>
     );
 }
 
-function KanbanColumn({ column, onArchive }: { column: Column; onArchive?: (clientId: string, clientName: string) => void }) {
+function KanbanColumn({ column }: { column: Column }) {
     return (
         <div className="flex-shrink-0 w-80">
             <Card>
@@ -64,7 +63,7 @@ function KanbanColumn({ column, onArchive }: { column: Column; onArchive?: (clie
                                 }`}
                         >
                             {column.clients.map((client, index) => (
-                                <ClientCard key={client.id} client={client} index={index} onArchive={onArchive} />
+                                <ClientCard key={client.id} client={client} index={index} />
                             ))}
                             {provided.placeholder}
                         </CardContent>
@@ -75,7 +74,7 @@ function KanbanColumn({ column, onArchive }: { column: Column; onArchive?: (clie
     );
 }
 
-function ClientCard({ client, index, onArchive }: { client: Client; index: number; onArchive?: (clientId: string, clientName: string) => void }) {
+function ClientCard({ client, index }: { client: Client; index: number }) {
     return (
         <Draggable draggableId={client.id} index={index}>
             {(provided, snapshot) => (
@@ -95,20 +94,6 @@ function ClientCard({ client, index, onArchive }: { client: Client; index: numbe
                                 </p>
                             </div>
                             <div className="flex items-center gap-1 ml-2">
-                                {onArchive && (
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        className="h-8 w-8 text-muted-foreground hover:text-orange-600 hover:bg-orange-50"
-                                        title="Arquivar do pipeline"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onArchive(client.id, client.name);
-                                        }}
-                                    >
-                                        <Archive className="h-4 w-4" />
-                                    </Button>
-                                )}
                                 {client.phone && (
                                     <a
                                         href={getWhatsAppLink(client.phone)}
