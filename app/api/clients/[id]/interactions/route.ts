@@ -33,9 +33,9 @@ export async function POST(
         const { type, description, metadata } = body;
 
         // Validações
-        if (!type || !description) {
+        if (!type) {
             return NextResponse.json(
-                { error: "Tipo e descrição são obrigatórios" },
+                { error: "Tipo é obrigatório" },
                 { status: 400 }
             );
         }

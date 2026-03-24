@@ -291,11 +291,12 @@ export default function ProductsPage() {
                                                         className="text-sm flex items-center gap-1"
                                                         style={color ? { borderLeft: `3px solid ${color}`, paddingLeft: 6 } : {}}
                                                     >
-                                                        <span
-                                                            className="font-medium"
-                                                            style={color ? { color } : {}}
-                                                        >{cfv.customField.name}:</span>{" "}
-                                                        <span className="text-muted-foreground">{cfv.value}</span>
+                                                        <span className="font-medium" style={color ? { color } : {}}>{cfv.customField.name}:</span>{" "}
+                                                        {cfv.customField.fieldType === "link" && cfv.value ? (
+                                                            <a href={cfv.value.startsWith("http") ? cfv.value : `https://${cfv.value}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate">{cfv.value}</a>
+                                                        ) : (
+                                                            <span className="text-muted-foreground">{cfv.value}</span>
+                                                        )}
                                                     </div>
                                                 );
                                             })}

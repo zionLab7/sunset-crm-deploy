@@ -203,6 +203,16 @@ export function ClientForm({
                     </Select>
                 );
 
+            case "link":
+                return (
+                    <Input
+                        type="url"
+                        value={value}
+                        onChange={(e) => handleChange(e.target.value)}
+                        placeholder="https://..."
+                    />
+                );
+
             default: // text
                 return (
                     <Input
@@ -243,7 +253,6 @@ export function ClientForm({
                     }}
                     placeholder="00.000.000/0000-00"
                     maxLength={18}
-                    disabled={!!initialData?.id} // Não permite editar CNPJ
                 />
                 {errors.cnpj && (
                     <p className="text-sm text-red-500 mt-1">{errors.cnpj.message}</p>

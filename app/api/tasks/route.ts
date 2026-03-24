@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
                 title,
                 description: description && description.trim() !== "" ? description : null,
                 clientId: cleanClientId,
-                dueDate: new Date(dueDate),
+                dueDate: new Date(dueDate + "T12:00:00"),
                 dueTime: dueTime || null,
                 status: status || "PENDENTE",
                 userId: finalUserId,

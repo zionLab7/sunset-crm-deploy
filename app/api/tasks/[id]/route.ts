@@ -48,7 +48,7 @@ export async function PATCH(
         if (title !== undefined) updateData.title = title;
         if (description !== undefined) updateData.description = description || null;
         if (clientId !== undefined) updateData.clientId = clientId || null;
-        if (dueDate !== undefined) updateData.dueDate = new Date(dueDate);
+        if (dueDate !== undefined) updateData.dueDate = new Date(dueDate + "T12:00:00");
         if (dueTime !== undefined) updateData.dueTime = dueTime || null;
         if (status !== undefined) {
             updateData.status = status;

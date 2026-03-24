@@ -18,7 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import { SaleModal } from "@/components/pipeline/SaleModal";
 
 const interactionSchema = z.object({
-    description: z.string().min(3, "Descrição deve ter pelo menos 3 caracteres"),
+    description: z.string().optional(),
 });
 
 type InteractionFormData = z.infer<typeof interactionSchema>;
@@ -61,7 +61,6 @@ export function InteractionModal({
     const [selectedType, setSelectedType] = useState<InteractionType | null>(null);
     const [saleModalOpen, setSaleModalOpen] = useState(false);
     const [pendingSaleData, setPendingSaleData] = useState<SaleData | null>(null);
-    // Post-submit ask task prompt
     const [promptTask, setPromptTask] = useState(false);
 
     const { register, handleSubmit, reset, formState: { errors } } = useForm<InteractionFormData>({
@@ -84,7 +83,6 @@ export function InteractionModal({
             const data = await res.json();
             setInteractionTypes(data.types || []);
         } catch {
-            // fallback defaults
             setInteractionTypes([
                 { id: "itc_call", name: "Ligação", emoji: "📞", isSaleType: false, color: "blue" },
                 { id: "itc_visit", name: "Visita", emoji: "🏢", isSaleType: false, color: "purple" },
@@ -99,7 +97,6 @@ export function InteractionModal({
         setSelectedType(type);
         setPendingSaleData(null);
         if (type.isSaleType) {
-            // Open SaleModal to collect sale details
             setSaleModalOpen(true);
         }
     };
@@ -111,7 +108,6 @@ export function InteractionModal({
 
     const handleSaleCancel = () => {
         setSaleModalOpen(false);
-        // Deselect if cancelled
         if (selectedType?.isSaleType) setSelectedType(null);
     };
 
@@ -120,7 +116,6 @@ export function InteractionModal({
             toast({ variant: "destructive", title: "Selecione um tipo de interação" });
             return;
         }
-        // If sale type and no sale data yet, open sale modal first
         if (selectedType.isSaleType && !pendingSaleData) {
             setSaleModalOpen(true);
             return;
@@ -156,7 +151,6 @@ export function InteractionModal({
 
             toast({ title: "✅ Interação registrada!", description: `${selectedType.emoji} ${selectedType.name} com ${clientName}` });
             onSuccess();
-            // Show task prompt instead of closing immediately
             setPromptTask(true);
         } catch (error: any) {
             toast({ variant: "destructive", title: "Erro ao salvar", description: error.message });
@@ -176,7 +170,6 @@ export function InteractionModal({
         onClose();
     };
 
-    // Color map
     const colorMap: Record<string, string> = {
         blue: "border-blue-400 text-blue-700 bg-blue-50 hover:bg-blue-100",
         purple: "border-purple-400 text-purple-700 bg-purple-50 hover:bg-purple-100",
@@ -197,7 +190,6 @@ export function InteractionModal({
                     </DialogHeader>
 
                     {promptTask ? (
-                        /* Post-interaction task prompt */
                         <div className="space-y-4 py-2">
                             <p className="text-sm text-muted-foreground text-center">
                                 Deseja agendar uma tarefa de acompanhamento para <strong>{clientName}</strong>?
@@ -209,7 +201,6 @@ export function InteractionModal({
                         </div>
                     ) : (
                         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                            {/* Tipo de interação */}
                             <div>
                                 <Label>Tipo de Interação *</Label>
                                 <div className="grid grid-cols-2 gap-2 mt-2">
@@ -234,16 +225,14 @@ export function InteractionModal({
                                         );
                                     })}
                                 </div>
-                                {/* Show sale data summary if selected */}
                                 {selectedType?.isSaleType && pendingSaleData && (
                                     <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md text-xs text-green-700 flex items-center justify-between">
-                                        <span>💰 Venda: {pendingSaleData.productName} × {pendingSaleData.quantity} — U$ {pendingSaleData.saleValue.toFixed(2)}</span>
+                                        <span>💰 Venda: {pendingSaleData.productName} × {pendingSaleData.quantity} — R$ {pendingSaleData.saleValue.toFixed(2)}</span>
                                         <button type="button" onClick={() => setSaleModalOpen(true)} className="underline ml-2">editar</button>
                                     </div>
                                 )}
                             </div>
 
-                            {/* Descrição */}
                             <div>
                                 <Label htmlFor="description">Descrição *</Label>
                                 <Textarea
@@ -271,7 +260,6 @@ export function InteractionModal({
                 </DialogContent>
             </Dialog>
 
-            {/* SaleModal — opens when a sale-type interaction is selected */}
             <SaleModal
                 open={saleModalOpen}
                 clientName={clientName}

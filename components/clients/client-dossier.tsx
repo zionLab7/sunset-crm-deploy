@@ -137,6 +137,10 @@ export function ClientDossier({ client }: ClientDossierProps) {
     const [emailUrl, setEmailUrl] = useState<string | null>(null);
     const [isArchived, setIsArchived] = useState(client.archivedFromPipeline || false);
     const [archiving, setArchiving] = useState(false);
+    const [interactionFilter, setInteractionFilter] = useState<string>("all");
+    const [editingInteractionId, setEditingInteractionId] = useState<string | null>(null);
+    const [editingDescription, setEditingDescription] = useState("");
+    const [savingEdit, setSavingEdit] = useState(false);
     // Clients and users for task modal
     const [taskClients, setTaskClients] = useState<Array<{ id: string; name: string }>>([]);
     const [taskUsers, setTaskUsers] = useState<Array<{ id: string; name: string }>>([]);
@@ -382,6 +386,38 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Campos Adicionais */}
+                        {client.customFieldValues && client.customFieldValues.length > 0 && (
+                            <>
+                                <Separator className="my-4" />
+                                <div>
+                                    <p className="text-sm font-medium text-muted-foreground mb-2">
+                                        Campos Adicionais
+                                    </p>
+                                    <div className="space-y-2">
+                                        {client.customFieldValues.map((cfv) => (
+                                            <div key={cfv.id} className="text-sm">
+                                                <span className="font-medium">{cfv.customField.name}:</span>{" "}
+                                                {cfv.customField.fieldType === "link" && cfv.value ? (
+                                                    <a
+                                                        href={cfv.value.startsWith("http") ? cfv.value : `https://${cfv.value}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-blue-600 hover:underline inline-flex items-center gap-1"
+                                                    >
+                                                        {cfv.value}
+                                                        <ExternalLink className="h-3 w-3" />
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-muted-foreground">{cfv.value}</span>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
             </div>
@@ -391,6 +427,16 @@ export function ClientDossier({ client }: ClientDossierProps) {
                 <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-semibold">Timeline de Atividades</h3>
                     <div className="flex gap-2">
+                        <select
+                            value={interactionFilter}
+                            onChange={(e) => setInteractionFilter(e.target.value)}
+                            className="text-sm border rounded-md px-2 py-1.5 bg-background"
+                        >
+                            <option value="all">Todos os tipos</option>
+                            {Object.entries(INTERACTION_ICONS).map(([key, val]) => (
+                                <option key={key} value={key}>{val.label}</option>
+                            ))}
+                        </select>
                         <Button
                             variant="outline"
                             onClick={() => setTaskModalOpen(true)}
@@ -406,9 +452,33 @@ export function ClientDossier({ client }: ClientDossierProps) {
                     </div>
                 </div>
 
+                {/* Tarefas Agendadas do Cliente */}
+                {client.tasks.filter(t => t.status !== "CONCLUIDA").length > 0 && (
+                    <div className="mb-6">
+                        <h4 className="text-sm font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Tarefas Agendadas</h4>
+                        <div className="space-y-2">
+                            {client.tasks.filter(t => t.status !== "CONCLUIDA").map(task => (
+                                <div key={task.id} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${task.status === "ATRASADA" ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+                                    }`}>
+                                    <CalendarPlus className={`h-4 w-4 flex-shrink-0 ${task.status === "ATRASADA" ? "text-red-500" : "text-blue-500"}`} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{task.title}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {new Date(task.dueDate).toLocaleDateString("pt-BR")} — {task.user.name}
+                                        </p>
+                                    </div>
+                                    <Badge variant={task.status === "ATRASADA" ? "destructive" : "default"} className="text-xs flex-shrink-0">
+                                        {task.status === "ATRASADA" ? "Atrasada" : "Pendente"}
+                                    </Badge>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Timeline */}
                 <div className="space-y-4">
-                    {client.interactions.length === 0 ? (
+                    {client.interactions.filter(i => interactionFilter === "all" || i.type === interactionFilter).length === 0 ? (
                         <Card>
                             <CardContent className="p-12 text-center">
                                 <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -426,7 +496,7 @@ export function ClientDossier({ client }: ClientDossierProps) {
                             </CardContent>
                         </Card>
                     ) : (
-                        client.interactions.map((interaction) => {
+                        client.interactions.filter(i => interactionFilter === "all" || i.type === interactionFilter).map((interaction) => {
                             const config = getInteractionConfig(interaction.type);
                             const Icon = config.icon;
 
@@ -462,10 +532,72 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                                             <span>{getRelativeTime(new Date(interaction.createdAt))}</span>
                                                         </div>
                                                     </div>
+                                                    {/* Edit button — Gestor can edit all, vendedor can edit own */}
+                                                    {(isGestor || interaction.user.id === currentUserId) && editingInteractionId !== interaction.id && (
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            className="h-7 w-7 flex-shrink-0"
+                                                            onClick={() => {
+                                                                setEditingInteractionId(interaction.id);
+                                                                setEditingDescription(interaction.description);
+                                                            }}
+                                                        >
+                                                            <Edit className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
                                                 </div>
+                                                {editingInteractionId === interaction.id ? (
+                                                    <div className="space-y-2">
+                                                        <textarea
+                                                            value={editingDescription}
+                                                            onChange={(e) => setEditingDescription(e.target.value)}
+                                                            className="w-full border rounded-md p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                                                            rows={3}
+                                                        />
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                size="sm"
+                                                                disabled={savingEdit}
+                                                                onClick={async () => {
+                                                                    setSavingEdit(true);
+                                                                    try {
+                                                                        const res = await fetch(`/api/clients/${client.id}/interactions/${interaction.id}`, {
+                                                                            method: "PATCH",
+                                                                            headers: { "Content-Type": "application/json" },
+                                                                            body: JSON.stringify({ description: editingDescription }),
+                                                                        });
+                                                                        if (!res.ok) throw new Error();
+                                                                        toast({ title: "✅ Interação atualizada" });
+                                                                        setEditingInteractionId(null);
+                                                                        router.refresh();
+                                                                    } catch {
+                                                                        toast({ variant: "destructive", title: "Erro ao salvar" });
+                                                                    } finally {
+                                                                        setSavingEdit(false);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                Salvar
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => setEditingInteractionId(null)}
+                                                            >
+                                                                Cancelar
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
                                                 <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                                                    {interaction.description}
+                                                    {interaction.description.split(/(https?:\/\/[^\s]+)/g).map((part, idx) =>
+                                                        /^https?:\/\//.test(part) ? (
+                                                            <a key={idx} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-all">{part}</a>
+                                                        ) : part
+                                                    )}
                                                 </p>
+                                                )}
                                                 {/* Sale metadata card */}
                                                 {saleMeta && (
                                                     <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg flex flex-wrap gap-3 text-sm">

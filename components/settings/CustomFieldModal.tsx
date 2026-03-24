@@ -65,7 +65,7 @@ export function CustomFieldModal({
     const [fieldType, setFieldType] = useState("text");
     const [required, setRequired] = useState(false);
     const [highlightColor, setHighlightColor] = useState<string | null>(null);
-    const [sourceFields, setSourceFields] = useState<Array<{ id: string; name: string }>>([]);;
+    const [sourceFields, setSourceFields] = useState<Array<{ id: string; name: string }>>([]);
     const [formulaSourceField, setFormulaSourceField] = useState("");
     const [formulaOperation, setFormulaOperation] = useState("percentage_discount");
     const [formulaValue, setFormulaValue] = useState("");
@@ -123,7 +123,7 @@ export function CustomFieldModal({
                 setFieldType("text");
                 setRequired(false);
                 setHighlightColor(null);
-                setFormulaSourceField("");;
+                setFormulaSourceField("");
                 setFormulaOperation("percentage_discount");
                 setFormulaValue("");
             }
@@ -276,6 +276,7 @@ export function CustomFieldModal({
                                 <SelectItem value="text">Texto</SelectItem>
                                 <SelectItem value="number">Número</SelectItem>
                                 <SelectItem value="date">Data</SelectItem>
+                                <SelectItem value="link">Link</SelectItem>
                                 <SelectItem value="select">Seleção (dropdown)</SelectItem>
                                 {entityType === "PRODUCT" && (
                                     <SelectItem value="calculated">📊 Calculado (automático)</SelectItem>
@@ -363,7 +364,7 @@ export function CustomFieldModal({
                     {entityType === "PRODUCT" && (
                         <div>
                             <Label>Cor de Destaque (opcional)</Label>
-                            <p className="text-xs text-muted-foreground mb-2">Destaca este campo visualmente nos cards de produto</p>
+                            <p className="text-xs text-muted-foreground mb-2">Destaca este campo nos cards de produto</p>
                             <div className="flex gap-2 flex-wrap mt-1">
                                 {[
                                     { color: null, label: "Nenhuma", cls: "bg-gray-200 border-gray-400" },

@@ -67,6 +67,10 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
     const [hiddenFields, setHiddenFields] = useState<string[]>([]);
     const [loadingVisibility, setLoadingVisibility] = useState(false);
     const [showVisibilitySection, setShowVisibilitySection] = useState(false);
+    // Standard field lock
+    const [standardLocked, setStandardLocked] = useState(true);
+    const [lockClickCount, setLockClickCount] = useState(0);
+    const [lockClickTimer, setLockClickTimer] = useState<NodeJS.Timeout | null>(null);
 
     const isGestor = userRole === "GESTOR";
 
@@ -116,6 +120,8 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
             initialData?.customFieldValues?.forEach(cfv => { vals[cfv.customFieldId] = cfv.value; });
             setCustomFieldValues(vals);
             setShowVisibilitySection(false);
+            setStandardLocked(true);
+            setLockClickCount(0);
         }
     }, [open, initialData, reset]);
 
@@ -181,9 +187,35 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
 
         switch (field.fieldType) {
             case "number":
+                // Standard field lock for number type
+                if (field.name.toLowerCase() === "standard" && initialData?.id) {
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Input
+                                type="number"
+                                value={value}
+                                onChange={e => handleChange(e.target.value)}
+                                placeholder="0"
+                                step="0.01"
+                                disabled={standardLocked}
+                                className={standardLocked ? "bg-muted" : ""}
+                            />
+                            <button
+                                type="button"
+                                onClick={handleLockClick}
+                                className={`p-2 rounded-md border transition-colors ${standardLocked ? "text-red-500 hover:bg-red-50 border-red-200" : "text-green-500 hover:bg-green-50 border-green-200"}`}
+                                title={standardLocked ? "🔒 Clique 3x rápido para desbloquear" : "🔓 Desbloqueado"}
+                            >
+                                {standardLocked ? "🔒" : "🔓"}
+                            </button>
+                        </div>
+                    );
+                }
                 return <Input type="number" value={value} onChange={e => handleChange(e.target.value)} placeholder="0" step="0.01" />;
             case "date":
                 return <Input type="date" value={value} onChange={e => handleChange(e.target.value)} />;
+            case "link":
+                return <Input type="url" value={value} onChange={e => handleChange(e.target.value)} placeholder="https://..." />;
             case "select":
                 let opts: string[] = [];
                 try { opts = JSON.parse(field.options || "[]"); } catch { opts = (field.options || "").split(",").map(o => o.trim()); }
@@ -197,8 +229,67 @@ export function ProductModal({ open, onClose, onSuccess, userRole, initialData }
                 if (field.name === "Descrição") {
                     return <Textarea value={value} onChange={e => handleChange(e.target.value)} placeholder="Descreva o produto..." rows={3} />;
                 }
+                // Standard field lock
+                if (field.name.toLowerCase() === "standard" && initialData?.id) {
+                    return (
+                        <div className="flex items-center gap-2">
+                            <Input
+                                value={value}
+                                onChange={e => handleChange(e.target.value)}
+                                placeholder="Valor Standard"
+                                disabled={standardLocked}
+                                className={standardLocked ? "bg-muted" : ""}
+                            />
+                            <button
+                                type="button"
+                                onClick={handleLockClick}
+                                className={`p-2 rounded-md border transition-colors ${standardLocked ? "text-red-500 hover:bg-red-50 border-red-200" : "text-green-500 hover:bg-green-50 border-green-200"}`}
+                                title={standardLocked ? "🔒 Clique 3x para desbloquear ou insira a senha" : "🔓 Desbloqueado"}
+                            >
+                                {standardLocked ? "🔒" : "🔓"}
+                            </button>
+                        </div>
+                    );
+                }
                 return <Input value={value} onChange={e => handleChange(e.target.value)} placeholder={`Digite ${field.name.toLowerCase()}...`} />;
         }
+    };
+
+    const handleLockClick = () => {
+        const newCount = lockClickCount + 1;
+        setLockClickCount(newCount);
+
+        if (lockClickTimer) clearTimeout(lockClickTimer);
+
+        if (newCount >= 3) {
+            setStandardLocked(false);
+            setLockClickCount(0);
+            toast({ title: "🔓 Campo Standard desbloqueado" });
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            setLockClickCount(0);
+            const pw = window.prompt("Digite a senha do gestor para desbloquear o campo Standard:");
+            if (pw) {
+                fetch("/api/auth/verify-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ password: pw }),
+                })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.valid) {
+                            setStandardLocked(false);
+                            toast({ title: "🔓 Campo Standard desbloqueado" });
+                        } else {
+                            toast({ variant: "destructive", title: "Senha incorreta" });
+                        }
+                    })
+                    .catch(() => toast({ variant: "destructive", title: "Erro ao verificar senha" }));
+            }
+        }, 1500);
+        setLockClickTimer(timer);
     };
 
     const visibleCustomFields = customFields.filter(f => f.fieldType !== "calculated");

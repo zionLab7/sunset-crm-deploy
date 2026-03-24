@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const customFieldSchema = z.object({
     name: z.string().min(1, "Nome é obrigatório"),
-    fieldType: z.enum(["text", "number", "date", "select", "calculated"]),
+    fieldType: z.enum(["text", "number", "date", "select", "calculated", "link"]),
     entityType: z.enum(["CLIENT", "PRODUCT"]),
     options: z.string().nullable().optional(),
     formula: z.string().nullable().optional(),

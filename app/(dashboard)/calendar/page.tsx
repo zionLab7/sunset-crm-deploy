@@ -201,9 +201,9 @@ export default function CalendarPage() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todos os status</SelectItem>
-                            <SelectItem value="PENDING">Pendentes</SelectItem>
-                            <SelectItem value="OVERDUE">Atrasadas</SelectItem>
-                            <SelectItem value="COMPLETED">Concluídas</SelectItem>
+                            <SelectItem value="PENDENTE">Pendentes</SelectItem>
+                            <SelectItem value="ATRASADA">Atrasadas</SelectItem>
+                            <SelectItem value="CONCLUIDA">Concluídas</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
