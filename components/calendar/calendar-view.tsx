@@ -29,9 +29,9 @@ const MONTHS = [
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 const STATUS_COLORS: Record<string, string> = {
-    PENDING: "bg-blue-500",
-    OVERDUE: "bg-red-500",
-    COMPLETED: "bg-green-500",
+    PENDENTE: "bg-blue-500",
+    ATRASADA: "bg-red-500",
+    CONCLUIDA: "bg-green-500",
 };
 
 export function CalendarView({ tasks, onDayClick }: CalendarViewProps) {

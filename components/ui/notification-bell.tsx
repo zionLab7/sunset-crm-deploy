@@ -119,7 +119,13 @@ export function NotificationBell() {
                             tasks.map((task) => (
                                 <button
                                     key={task.id}
-                                    onClick={() => { setOpen(false); router.push("/calendar"); }}
+                                    onClick={() => {
+                                        setOpen(false);
+                                        // Navigate to calendar — the Agenda page will open
+                                        const taskDate = new Date(task.dueDate);
+                                        const dateStr = `${taskDate.getFullYear()}-${String(taskDate.getMonth() + 1).padStart(2, '0')}-${String(taskDate.getDate()).padStart(2, '0')}`;
+                                        router.push(`/calendar?date=${dateStr}`);
+                                    }}
                                     className={`w-full text-left px-4 py-3 hover:bg-muted transition-colors border-b last:border-b-0 ${task.isOverdue ? "bg-red-50 dark:bg-red-950/30" : "bg-amber-50 dark:bg-amber-950/30"}`}
                                 >
                                     <div className="flex items-start gap-2">

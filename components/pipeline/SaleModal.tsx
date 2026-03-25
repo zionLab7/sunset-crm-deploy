@@ -62,6 +62,7 @@ export function SaleModal({
     const [activeSearchIndex, setActiveSearchIndex] = useState<number | null>(null);
     const [productSearch, setProductSearch] = useState("");
     const [notes, setNotes] = useState("");
+    const [markup, setMarkup] = useState("");
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<string[]>([]);
     const searchRef = useRef<HTMLDivElement>(null);
@@ -73,6 +74,7 @@ export function SaleModal({
             setActiveSearchIndex(null);
             setProductSearch("");
             setNotes("");
+            setMarkup("");
             setErrors([]);
         }
     }, [open]);
@@ -154,16 +156,15 @@ export function SaleModal({
         if (!validate()) return;
         setLoading(true);
 
-        // Build a combined summary for notes
+        // Build a combined summary for notes — always include detail regardless of item count
         const itemsSummary = items
             .map((it) => `${it.productName} (x${it.quantity} × U$${parseFloat(it.unitPrice).toFixed(2)})`)
             .join(", ");
 
-        // Call onConfirm for each item (or combined if single)
-        // Use first product as primary + append others in notes
         const firstItem = items[0];
         const combinedNotes = [
-            items.length > 1 ? `Itens: ${itemsSummary}` : "",
+            `Itens: ${itemsSummary}`,
+            markup ? `Markup: ${markup}` : "",
             notes,
         ].filter(Boolean).join("\n");
 
@@ -313,15 +314,24 @@ export function SaleModal({
                     </Button>
 
                     {/* Total geral */}
-                    {items.length > 1 && (
-                        <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border rounded-md">
-                            <span className="text-sm font-medium flex items-center gap-1">
-                                <DollarSign className="h-4 w-4" />
-                                Total da venda
-                            </span>
-                            <span className="font-bold text-green-700">U$ {totalValue.toFixed(2)}</span>
-                        </div>
-                    )}
+                    <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border rounded-md">
+                        <span className="text-sm font-medium flex items-center gap-1">
+                            <DollarSign className="h-4 w-4" />
+                            Total da venda
+                        </span>
+                        <span className="font-bold text-green-700">U$ {totalValue.toFixed(2)}</span>
+                    </div>
+
+                    {/* Markup */}
+                    <div>
+                        <Label className="text-xs">Markup negociado (%)</Label>
+                        <Input
+                            value={markup}
+                            onChange={(e) => setMarkup(e.target.value)}
+                            placeholder="Ex: 25%"
+                            className="mt-1 text-sm"
+                        />
+                    </div>
 
                     {/* Observações */}
                     <div>

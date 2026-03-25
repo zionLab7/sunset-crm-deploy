@@ -70,7 +70,7 @@ export function ImportClientsModal({
     const [assignedUserId, setAssignedUserId] = useState("");
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<ImportResult | null>(null);
-    const [customFieldDefs, setCustomFieldDefs] = useState<Array<{ id: string; name: string }>>([]);
+    const [customFieldDefs, setCustomFieldDefs] = useState<Array<{ id: string; name: string }>>([])
 
     // Reset on open
     useEffect(() => {
@@ -83,7 +83,7 @@ export function ImportClientsModal({
             setStageId(stages[0]?.id || "");
             setAssignedUserId("");
             setResult(null);
-            // Fetch custom CLIENT fields for column mapping
+            // Fetch custom CLIENT fields
             fetch("/api/custom-fields?entityType=CLIENT")
                 .then(r => r.json())
                 .then(d => setCustomFieldDefs((d.customFields || []).filter((f: any) => f.fieldType !== "calculated").map((f: any) => ({ id: f.id, name: f.name }))))
@@ -198,7 +198,6 @@ export function ImportClientsModal({
                     if (colIdx !== "" && colIdx !== undefined) {
                         const val = row[parseInt(colIdx)];
                         if (fieldKey.startsWith("cf_")) {
-                            // Custom field
                             const cfId = fieldKey.replace("cf_", "");
                             if (val !== null && val !== undefined && val !== "") {
                                 customFields[cfId] = String(val);
@@ -208,9 +207,7 @@ export function ImportClientsModal({
                         }
                     }
                 });
-                if (Object.keys(customFields).length > 0) {
-                    client.customFields = customFields;
-                }
+                if (Object.keys(customFields).length > 0) client.customFields = customFields;
                 return client;
             });
 
@@ -346,7 +343,6 @@ export function ImportClientsModal({
                             <Label className="text-sm font-semibold">
                                 Mapeamento de Colunas
                             </Label>
-                            {/* Standard CRM fields */}
                             {CRM_FIELDS.map((field) => (
                                 <div
                                     key={field.key}
@@ -641,18 +637,20 @@ export function ImportClientsModal({
                         </div>
 
                         {result.errors.length > 0 && (
-                            <div className="bg-gray-50 rounded-lg p-3 max-h-36 overflow-y-auto">
-                                <p className="text-xs font-semibold text-gray-600 mb-2">
-                                    Detalhes:
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-h-60 overflow-y-auto">
+                                <p className="text-sm font-semibold text-red-700 mb-2">
+                                    ⚠️ Relatório de falhas — {result.errors.length} cliente{result.errors.length > 1 ? "s" : ""} não importado{result.errors.length > 1 ? "s" : ""}:
                                 </p>
-                                {result.errors.map((err, idx) => (
-                                    <p
-                                        key={idx}
-                                        className="text-xs text-gray-500 py-0.5"
-                                    >
-                                        • {err}
-                                    </p>
-                                ))}
+                                <div className="space-y-1">
+                                    {result.errors.map((err, idx) => (
+                                        <div
+                                            key={idx}
+                                            className="text-sm text-red-600 py-1 px-2 bg-white rounded border border-red-100"
+                                        >
+                                            <span className="font-medium">Linha {idx + 1}:</span> {err}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 

@@ -60,6 +60,7 @@ export default function ClientsPage() {
     const [selectedStage, setSelectedStage] = useState<string>("all");
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [onlyMine, setOnlyMine] = useState(false);
 
 
     useEffect(() => {
@@ -110,17 +111,24 @@ export default function ClientsPage() {
     };
 
     const filteredClients = clients.filter((client) => {
+        // Filtro "Meus Clientes"
+        if (onlyMine && client.assignedUser.name !== session?.user?.name) return false;
+
         if (!searchTerm || searchTerm.trim() === "") return true;
 
         const searchNormalized = searchTerm.toLowerCase().trim();
         const searchOnlyNumbers = searchTerm.replace(/\D/g, "");
 
         const nameMatch = client.name.toLowerCase().includes(searchNormalized);
-        // Guard against null CNPJ (common after import without CNPJ)
         const clientCNPJNumbers = (client.cnpj || "").replace(/\D/g, "");
         const cnpjMatch = searchOnlyNumbers.length > 0 && clientCNPJNumbers.includes(searchOnlyNumbers);
 
-        return nameMatch || cnpjMatch;
+        // Busca por Código Interno (campo customizado)
+        const internalCodeMatch = (client as any).customFieldValues?.some(
+            (cfv: any) => cfv.value?.toLowerCase().includes(searchNormalized)
+        ) || false;
+
+        return nameMatch || cnpjMatch || internalCodeMatch;
     });
 
     const handleDeleteClient = async (client: Client, e: React.MouseEvent) => {
@@ -238,7 +246,7 @@ export default function ClientsPage() {
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Buscar por nome ou CNPJ..."
+                        placeholder="Buscar por nome, CNPJ ou código interno..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="pl-10"
@@ -257,6 +265,14 @@ export default function ClientsPage() {
                         ))}
                     </SelectContent>
                 </Select>
+                <Button
+                    variant={onlyMine ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setOnlyMine(!onlyMine)}
+                    className="whitespace-nowrap"
+                >
+                    {onlyMine ? "✓ Meus Clientes" : "Meus Clientes"}
+                </Button>
             </div>
 
             {/* Tabela */}
@@ -297,7 +313,6 @@ export default function ClientsPage() {
                                 <TableHead>Nome</TableHead>
                                 <TableHead>CNPJ</TableHead>
                                 <TableHead>Estágio</TableHead>
-                                <TableHead>Valor Potencial</TableHead>
                                 <TableHead>Vendedor</TableHead>
                                 <TableHead className="text-right">Ações</TableHead>
                             </TableRow>
@@ -335,7 +350,6 @@ export default function ClientsPage() {
                                             {client.currentStage.name}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>{formatCurrency(client.potentialValue)}</TableCell>
                                     <TableCell className="text-muted-foreground">
                                         {client.assignedUser.name}
                                     </TableCell>

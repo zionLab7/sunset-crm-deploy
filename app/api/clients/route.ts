@@ -54,6 +54,13 @@ export async function GET(request: NextRequest) {
                         email: true,
                     },
                 },
+                customFieldValues: {
+                    include: {
+                        customField: {
+                            select: { id: true, name: true },
+                        },
+                    },
+                },
             },
             orderBy: {
                 potentialValue: "desc",

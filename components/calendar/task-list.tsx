@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Edit, Trash2, CheckCircle2, Calendar } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -163,12 +162,28 @@ export function TaskList({ tasks, onEdit, onRefresh, userRole }: TaskListProps) 
                     >
                         <CardContent className="p-4">
                             <div className="flex items-start gap-3">
-                                {/* Checkbox */}
-                                <Checkbox
-                                    checked={isCompleted}
-                                    onCheckedChange={() => handleToggleComplete(task)}
-                                    className="mt-1"
-                                />
+                                {/* Botão de conclusão */}
+                                {!isCompleted ? (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="mt-0.5 bg-green-50 border-green-300 text-green-700 hover:bg-green-100 hover:text-green-800 whitespace-nowrap text-xs flex-shrink-0"
+                                        onClick={() => handleToggleComplete(task)}
+                                    >
+                                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                        Tarefa realizada
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="mt-0.5 text-muted-foreground text-xs flex-shrink-0"
+                                        onClick={() => handleToggleComplete(task)}
+                                    >
+                                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                                        Concluída
+                                    </Button>
+                                )}
 
                                 {/* Content */}
                                 <div className="flex-1">

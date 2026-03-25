@@ -84,7 +84,6 @@ async function main() {
             name: 'Fechamento',
             color: '#10B981', // green-500
             order: 4,
-            isClosedStage: true, // ← Marca que esta fase é uma venda fechada (aciona o SaleModal)
         },
     });
 

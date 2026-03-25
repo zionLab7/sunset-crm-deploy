@@ -27,7 +27,7 @@ import { toast } from "@/hooks/use-toast";
 import { Loader2, Search, X } from "lucide-react";
 
 const taskSchema = z.object({
-    title: z.string().min(3, "Título deve ter pelo menos 3 caracteres"),
+    title: z.string().optional(),
     description: z.string().optional(),
     clientId: z.string().optional().nullable(),
     userId: z.string().optional(),
@@ -146,8 +146,8 @@ export function TaskModal({
             }
 
             toast({
-                title: initialData?.id ? "✅ Tarefa atualizada!" : "✅ Tarefa criada!",
-                description: `${data.title} foi salva com sucesso.`,
+                title: data.title || `Tarefa ${new Date(data.dueDate).toLocaleDateString("pt-BR")}`,
+                description: `${data.title || "Tarefa"} foi salva com sucesso.`,
             });
 
             reset();
@@ -167,7 +167,7 @@ export function TaskModal({
 
     return (
         <Dialog open={open} onOpenChange={(open) => !loading && !open && onClose()}>
-            <DialogContent>
+            <DialogContent className="max-w-2xl">
                 <DialogHeader>
                     <DialogTitle>
                         {initialData?.id ? "Editar Tarefa" : "Nova Tarefa"}
@@ -180,28 +180,24 @@ export function TaskModal({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    {/* Título */}
-                    <div>
-                        <Label htmlFor="title">Título *</Label>
-                        <Input
-                            id="title"
-                            {...register("title")}
-                            placeholder="Ex: Ligar para cliente"
-                        />
-                        {errors.title && (
-                            <p className="text-sm text-red-500 mt-1">{errors.title.message}</p>
-                        )}
-                    </div>
-
-                    {/* Descrição */}
-                    <div>
-                        <Label htmlFor="description">Descrição</Label>
-                        <Textarea
-                            id="description"
-                            {...register("description")}
-                            placeholder="Detalhes adicionais..."
-                            rows={3}
-                        />
+                    {/* Linha 1: Título e Descrição lado a lado */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <Label htmlFor="title">Título (opcional)</Label>
+                            <Input
+                                id="title"
+                                {...register("title")}
+                                placeholder="Ex: Ligar para cliente"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="description">Descrição (opcional)</Label>
+                            <Input
+                                id="description"
+                                {...register("description")}
+                                placeholder="Detalhes adicionais..."
+                            />
+                        </div>
                     </div>
 
                     {/* Cliente — Searchable combobox */}

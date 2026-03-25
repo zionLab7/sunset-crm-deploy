@@ -43,7 +43,6 @@ export function InteractionTypesTab() {
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState<string | null>(null);
 
-    // Form state
     const [name, setName] = useState("");
     const [emoji, setEmoji] = useState("📝");
     const [color, setColor] = useState("gray");
@@ -216,7 +215,6 @@ export function InteractionTypesTab() {
                 </div>
             )}
 
-            {/* Add/Edit Modal */}
             <Dialog open={modalOpen} onOpenChange={(o) => !saving && setModalOpen(o)}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
