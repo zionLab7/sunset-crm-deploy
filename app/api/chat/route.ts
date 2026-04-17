@@ -415,7 +415,7 @@ export async function POST(request: Request) {
         const businessContext = await getBusinessContext();
 
         // Build conversation for Gemini
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" });
 
         const chat = model.startChat({
             history: [
