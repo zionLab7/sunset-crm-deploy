@@ -11,13 +11,13 @@ async function getGeminiApiKey(): Promise<string | null> {
     return config?.value || null;
 }
 
-// Fetch a comprehensive snapshot of all business data for the AI context
+// Fetch an optimized snapshot of business data (token-efficient)
 async function getBusinessContext() {
     const now = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(now.getDate() - 30);
 
-    // 1. All sellers with full performance data
+    // 1. Sellers with limited depth
     const sellers = await prisma.user.findMany({
         where: { role: "VENDEDOR" },
         include: {
@@ -26,25 +26,18 @@ async function getBusinessContext() {
                     currentStage: true,
                     interactions: {
                         orderBy: { createdAt: "desc" },
-                        take: 5,
+                        take: 2,
                     },
                     products: {
-                        include: { product: true },
+                        include: { product: { select: { name: true } } },
                     },
                 },
             },
             tasks: {
-                include: {
-                    client: { select: { name: true } },
-                },
-                orderBy: { dueDate: "desc" },
-            },
-            interactions: {
-                orderBy: { createdAt: "desc" },
-                take: 20,
-                include: {
-                    client: { select: { name: true } },
-                },
+                where: { status: { not: "CONCLUIDA" } },
+                include: { client: { select: { name: true } } },
+                orderBy: { dueDate: "asc" },
+                take: 10,
             },
         },
     });
@@ -54,312 +47,180 @@ async function getBusinessContext() {
         orderBy: { order: "asc" },
         include: { _count: { select: { clients: true } } },
     });
+    const closedStageIds = stages.filter((s) => s.isClosedStage).map((s) => s.id);
 
-    const closedStageIds = stages
-        .filter((s) => s.isClosedStage)
-        .map((s) => s.id);
-
-    // 3. All clients with full detail
+    // 3. Compact client list
     const allClients = await prisma.client.findMany({
         include: {
-            currentStage: true,
-            assignedUser: { select: { name: true, email: true } },
+            currentStage: { select: { name: true } },
+            assignedUser: { select: { name: true } },
             interactions: {
                 orderBy: { createdAt: "desc" },
-                take: 5,
-                include: {
-                    user: { select: { name: true } },
-                },
+                take: 1,
+                select: { createdAt: true, type: true, metadata: true },
             },
-            products: {
-                include: { product: true },
-            },
+            products: { include: { product: { select: { name: true } } } },
             customFieldValues: {
-                include: { customField: true },
+                include: { customField: { select: { name: true } } },
             },
         },
     });
 
-    // 4. Recent interactions (last 30 days)
-    const recentInteractions = await prisma.interaction.count({
-        where: { createdAt: { gte: thirtyDaysAgo } },
-    });
-
-    // 5. Overdue tasks
+    // 4. Overdue tasks
     const overdueTasks = await prisma.task.findMany({
-        where: {
-            dueDate: { lt: now },
-            status: { not: "CONCLUIDA" },
-        },
+        where: { dueDate: { lt: now }, status: { not: "CONCLUIDA" } },
         include: {
             user: { select: { name: true } },
             client: { select: { name: true } },
         },
     });
 
-    // 6. Products with custom fields
+    // 5. Products
     const products = await prisma.product.findMany({
         include: {
             _count: { select: { clients: true } },
             customFieldValues: {
-                include: { customField: true },
+                include: { customField: { select: { name: true } } },
             },
         },
     });
 
-    // 7. Gestores
+    // 6. Gestores
     const gestores = await prisma.user.findMany({
         where: { role: "GESTOR" },
         select: { name: true, monthlyGoal: true },
     });
 
-    // ============ BUILD CONTEXT ============
+    // 7. Recent interaction count
+    const recentInteractions = await prisma.interaction.count({
+        where: { createdAt: { gte: thirtyDaysAgo } },
+    });
 
-    // Helper: extrai saleValue real de um cliente via metadata das interações
-    function getRealSaleValue(interactions: Array<{ metadata: string | null }>, potentialValue: number): number {
+    // ============ HELPERS ============
+    function getSaleValue(interactions: Array<{ metadata: string | null }>, potentialValue: number): number {
         for (const i of interactions) {
             if (i.metadata) {
                 try {
-                    const meta = JSON.parse(i.metadata);
-                    if (meta.saleValue != null) return parseFloat(String(meta.saleValue));
-                } catch { /* ignora JSON inválido */ }
+                    const m = JSON.parse(i.metadata);
+                    if (m.saleValue != null) return parseFloat(String(m.saleValue));
+                } catch { }
             }
         }
-        return potentialValue; // fallback para dados sem modal
+        return potentialValue;
     }
 
-    // Sellers with per-client timeline
+    // ============ BUILD CONTEXT ============
+
+    // Sellers — compact per-client summary
     const sellersContext = sellers.map((s) => {
-        const totalClients = s.clients.length;
-        const closedClients = s.clients.filter((c) =>
-            closedStageIds.includes(c.currentStageId)
-        );
-        // Usa saleValue real; fallback para potentialValue
-        const totalRevenue = closedClients.reduce(
-            (sum, c) => sum + getRealSaleValue(c.interactions, c.potentialValue), 0
-        );
+        const closedClients = s.clients.filter((c) => closedStageIds.includes(c.currentStageId));
+        const totalRevenue = closedClients.reduce((sum, c) => sum + getSaleValue(c.interactions, c.potentialValue), 0);
         const pendingTasks = s.tasks.filter((t) => t.status === "PENDENTE").length;
-        const overdue = s.tasks.filter(
-            (t) => t.status !== "CONCLUIDA" && t.dueDate < now
-        ).length;
-        const completedTasks = s.tasks.filter((t) => t.status === "CONCLUIDA").length;
-
-        // Per-client summary for this seller
-        const clientsSummary = s.clients.map((c) => {
-            const isClosed = closedStageIds.includes(c.currentStageId);
-            const realValue = isClosed ? getRealSaleValue(c.interactions, c.potentialValue) : null;
-            return {
-                nome: c.name,
-                estagio: c.currentStage.name,
-                valorPotencial: c.potentialValue,
-                valorVendaRegistrado: realValue, // null = não aplicável (não fechado)
-                ultimaInteracao: c.interactions.length > 0
-                    ? c.interactions[0].createdAt.toISOString().split("T")[0]
-                    : "Nunca",
-                tipoUltimaInteracao: c.interactions.length > 0
-                    ? c.interactions[0].type : null,
-                totalInteracoes: c.interactions.length,
-                produtos: c.products.map((p) => p.product.name),
-            };
-        });
-
-        // Recent interactions timeline
-        const timeline = s.interactions.slice(0, 10).map((i) => ({
-            data: i.createdAt.toISOString().split("T")[0],
-            tipo: i.type,
-            cliente: i.client?.name || "N/A",
-            descricao: i.description?.substring(0, 100) || "",
-        }));
-
-        // Tasks detail
-        const tarefasDetalhadas = s.tasks.slice(0, 10).map((t) => ({
-            titulo: t.title,
-            status: t.status,
-            vencimento: t.dueDate.toISOString().split("T")[0],
-            cliente: t.client?.name || "Sem cliente",
-        }));
-
-        const progressoMeta = s.monthlyGoal > 0
-            ? `${((totalRevenue / s.monthlyGoal) * 100).toFixed(1)}%`
-            : "Meta não definida";
+        const overdue = s.tasks.filter((t) => t.dueDate < now).length;
 
         return {
             nome: s.name,
             email: s.email,
             metaMensal: s.monthlyGoal,
-            progressoMeta,
-            totalClientes: totalClients,
-            clientesFechados: closedClients.length,
-            receitaRealTotal: totalRevenue, // baseado em saleValue registrado
+            progressoMeta: s.monthlyGoal > 0 ? `${((totalRevenue / s.monthlyGoal) * 100).toFixed(1)}%` : "Sem meta",
+            totalClientes: s.clients.length,
+            vendas: closedClients.length,
+            receita: totalRevenue,
             tarefasPendentes: pendingTasks,
             tarefasAtrasadas: overdue,
-            tarefasConcluidas: completedTasks,
-            clientes: clientsSummary,
-            ultimasInteracoes: timeline,
-            tarefas: tarefasDetalhadas,
+            clientes: s.clients.map((c) => ({
+                nome: c.name,
+                fase: c.currentStage.name,
+                valor: c.potentialValue,
+                produtos: c.products.map((p) => p.product.name).join(", ") || "—",
+                ultimaInteracao: c.interactions[0]?.createdAt.toISOString().split("T")[0] || "Nunca",
+                tipoUltima: c.interactions[0]?.type || null,
+            })),
+            proximasTarefas: s.tasks.slice(0, 5).map((t) => ({
+                titulo: t.title,
+                status: t.status,
+                vencimento: t.dueDate.toISOString().split("T")[0],
+                cliente: t.client?.name || "—",
+            })),
         };
     });
 
+    // Pipeline
     const pipelineContext = stages.map((s) => ({
-        fase: s.name,
-        totalClientes: s._count.clients,
-        cor: s.color,
-        isFaseFechamento: s.isClosedStage,
+        fase: s.name, total: s._count.clients, fechamento: s.isClosedStage,
     }));
 
-    // Full client records
-    const clientsContext = allClients.map((c) => {
+    // Compact client list
+    const clientsCompact = allClients.map((c) => {
         const isClosed = closedStageIds.includes(c.currentStageId);
-        const realSaleValue = isClosed
-            ? (() => {
-                for (const i of c.interactions) {
-                    if (i.metadata) {
-                        try { const m = JSON.parse(i.metadata); if (m.saleValue != null) return parseFloat(String(m.saleValue)); } catch { }
-                    }
-                }
-                return c.potentialValue;
-            })()
-            : null;
+        const saleVal = isClosed ? getSaleValue(c.interactions, c.potentialValue) : null;
+        const lastDate = c.interactions[0]?.createdAt;
+        const inactive = !lastDate || lastDate < thirtyDaysAgo;
         return {
             nome: c.name,
-            cnpj: c.cnpj || "Não informado",
-            telefone: c.phone || "Não informado",
-            email: c.email || "Não informado",
-            vendedor: c.assignedUser?.name || "Sem vendedor",
-            faseAtual: c.currentStage.name,
-            valorPotencial: c.potentialValue,
-            valorVendaRegistrado: realSaleValue, // null = não fechado; número = valor real da venda
-            criadoEm: c.createdAt.toISOString().split("T")[0],
-            produtos: c.products.map((p) => p.product.name),
-            camposCustomizados: c.customFieldValues.map((cfv) => ({
-                campo: cfv.customField.name,
-                valor: cfv.value,
-            })),
-            interacoes: c.interactions.map((i) => ({
-                data: i.createdAt.toISOString().split("T")[0],
-                tipo: i.type,
-                responsavel: i.user?.name || "Sistema",
-                descricao: i.description?.substring(0, 150) || "",
-            })),
-            ultimaInteracao: c.interactions.length > 0
-                ? c.interactions[0].createdAt.toISOString().split("T")[0]
-                : "Nunca",
+            cnpj: c.cnpj || "—",
+            vendedor: c.assignedUser?.name || "—",
+            fase: c.currentStage.name,
+            valor: c.potentialValue,
+            valorVenda: saleVal,
+            produtos: c.products.map((p) => p.product.name).join(", ") || "—",
+            ultimaInteracao: lastDate?.toISOString().split("T")[0] || "Nunca",
+            inativo: inactive,
+            campos: c.customFieldValues.length > 0
+                ? c.customFieldValues.map((v) => `${v.customField.name}: ${v.value}`).join("; ")
+                : null,
         };
     });
 
-    // Inactive clients
-    const inactiveClients = allClients
-        .filter((c) => {
-            if (c.interactions.length === 0) return true;
-            return c.interactions[0].createdAt < thirtyDaysAgo;
-        })
-        .map((c) => ({
-            nome: c.name,
-            vendedor: c.assignedUser?.name || "Sem vendedor",
-            faseAtual: c.currentStage.name,
-            valorPotencial: c.potentialValue,
-            ultimaInteracao: c.interactions.length > 0
-                ? c.interactions[0].createdAt.toISOString().split("T")[0]
-                : "Nunca",
-        }));
-
+    // Overdue tasks
     const overdueContext = overdueTasks.map((t) => ({
-        tarefa: t.title,
-        vendedor: t.user.name,
-        cliente: t.client?.name || "Sem cliente",
+        tarefa: t.title, vendedor: t.user.name, cliente: t.client?.name || "—",
         vencimento: t.dueDate.toISOString().split("T")[0],
     }));
 
-    // Products with custom field values
+    // Products
     const productsContext = products.map((p) => ({
-        nome: p.name,
-        codigo: p.stockCode,
-        clientesVinculados: p._count.clients,
-        camposCustomizados: p.customFieldValues.map((cfv) => ({
-            campo: cfv.customField.name,
-            valor: cfv.value,
-        })),
+        nome: p.name, codigo: p.stockCode, clientes: p._count.clients,
+        campos: p.customFieldValues.map((v) => `${v.customField.name}: ${v.value}`).join("; ") || "—",
     }));
 
-    // General KPIs — usa saleValue real, fallback potentialValue
+    // KPIs
     const totalClients = allClients.length;
-    const closedClients = allClients.filter((c) =>
-        closedStageIds.includes(c.currentStageId)
-    );
-    const closedClientsCount = closedClients.length;
-    const totalRevenue = closedClients
-        .reduce((sum, c) => {
-            for (const i of c.interactions) {
-                if (i.metadata) {
-                    try {
-                        const meta = JSON.parse(i.metadata);
-                        if (meta.saleValue != null) return sum + parseFloat(String(meta.saleValue));
-                    } catch { /* ignora */ }
-                }
-            }
-            return sum + c.potentialValue;
-        }, 0);
-    const conversionRate =
-        totalClients > 0
-            ? ((closedClientsCount / totalClients) * 100).toFixed(1)
-            : "0";
-    const avgTicket =
-        closedClientsCount > 0
-            ? (totalRevenue / closedClientsCount).toFixed(2)
-            : "0";
-
-    // Progresso em relação à meta do gestor
-    const gestorGoal = gestores.length > 0 ? gestores.reduce((max, g) => Math.max(max, g.monthlyGoal), 0) : 0;
-    const goalProgress = gestorGoal > 0
-        ? `U$ ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })} de U$ ${gestorGoal.toLocaleString("en-US", { minimumFractionDigits: 2 })} (${((totalRevenue / gestorGoal) * 100).toFixed(1)}%)`
-        : "Meta mensal não definida";
-    const goalRemaining = gestorGoal > 0
-        ? Math.max(0, gestorGoal - totalRevenue)
-        : null;
+    const closedClients = allClients.filter((c) => closedStageIds.includes(c.currentStageId));
+    const totalRevenue = closedClients.reduce((sum, c) => sum + getSaleValue(c.interactions, c.potentialValue), 0);
+    const conversionRate = totalClients > 0 ? ((closedClients.length / totalClients) * 100).toFixed(1) : "0";
+    const avgTicket = closedClients.length > 0 ? (totalRevenue / closedClients.length).toFixed(2) : "0";
+    const gestorGoal = gestores.reduce((max, g) => Math.max(max, g.monthlyGoal), 0);
+    const inactiveCount = clientsCompact.filter((c) => c.inativo).length;
 
     return `
-=== DADOS COMPLETOS DA EMPRESA SUNSET DISTRIBUIDORA ===
-Data atual: ${now.toISOString().split("T")[0]}
+=== SUNSET DISTRIBUIDORA — CONTEXTO ===
+Data: ${now.toISOString().split("T")[0]}
+Moeda: U$ (dólar americano). Valores de receita = valor REAL registrado na venda.
 
-IMPORTANTE: Os valores de receita são baseados no VALOR REAL registrado no modal de venda pelo vendedor.
-Se não houver valor registrado (vendas antigas ou migradas), utiliza-se o valor potencial como estimativa.
-A moeda utilizada é U$ (dólar americano).
+--- KPIs ---
+Clientes: ${totalClients} | Vendas fechadas: ${closedClients.length} | Receita: U$ ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+Conversão: ${conversionRate}% | Ticket médio: U$ ${avgTicket} | Interações 30d: ${recentInteractions}
+Tarefas atrasadas: ${overdueTasks.length} | Clientes inativos (30d+): ${inactiveCount}
+Meta mensal: U$ ${gestorGoal.toLocaleString("en-US", { minimumFractionDigits: 2 })} | Progresso: ${gestorGoal > 0 ? ((totalRevenue / gestorGoal) * 100).toFixed(1) + "%" : "Sem meta"} | Falta: U$ ${gestorGoal > 0 ? Math.max(0, gestorGoal - totalRevenue).toLocaleString("en-US", { minimumFractionDigits: 2 }) : "—"}
 
---- META MENSAL E PROGRESSO ---
-Meta Mensal da Empresa: U$ ${gestorGoal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-Receita Realizada (vendas fechadas): U$ ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-Progresso em relação à meta: ${goalProgress}
-${goalRemaining !== null ? `Falta para atingir a meta: U$ ${goalRemaining.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : ""}
+--- VENDEDORES ---
+${JSON.stringify(sellersContext, null, 1)}
 
---- KPIs GERAIS ---
-Total de Clientes: ${totalClients}
-Clientes com Venda Fechada: ${closedClientsCount}
-Receita Total (baseada em vendas registradas): U$ ${totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-Taxa de Conversão: ${conversionRate}%
-Ticket Médio: U$ ${avgTicket}
-Interações nos últimos 30 dias: ${recentInteractions}
-Tarefas atrasadas: ${overdueTasks.length}
+--- FUNIL ---
+${JSON.stringify(pipelineContext)}
 
---- VENDEDORES (com clientes e histórico detalhado) ---
-${JSON.stringify(sellersContext, null, 2)}
-
---- FUNIL DE VENDAS (Pipeline) ---
-${JSON.stringify(pipelineContext, null, 2)}
-
---- FICHAS COMPLETAS DOS CLIENTES ---
-${JSON.stringify(clientsContext, null, 2)}
-
---- CLIENTES SEM INTERAÇÃO (30+ dias) ---
-${JSON.stringify(inactiveClients, null, 2)}
+--- CLIENTES ---
+${JSON.stringify(clientsCompact, null, 1)}
 
 --- TAREFAS ATRASADAS ---
-${JSON.stringify(overdueContext, null, 2)}
+${JSON.stringify(overdueContext)}
 
---- PRODUTOS (com campos customizados) ---
-${JSON.stringify(productsContext, null, 2)}
+--- PRODUTOS ---
+${JSON.stringify(productsContext)}
 
---- GESTORES E METAS ---
-${JSON.stringify(gestores, null, 2)}
+--- GESTORES ---
+${JSON.stringify(gestores)}
 `;
 }
 
@@ -367,8 +228,8 @@ const SYSTEM_PROMPT = `Você é o Assistente IA da Sunset Distribuidora, um anal
 
 Seu papel:
 - Responder perguntas sobre o desempenho comercial da empresa com base nos dados reais fornecidos
-- Você tem acesso às FICHAS COMPLETAS de cada cliente (dados cadastrais, interações, produtos, campos customizados)
-- Você tem acesso ao HISTÓRICO DETALHADO de cada vendedor (clientes, timeline de interações, tarefas)
+- Você tem acesso aos dados de cada cliente (cadastro, fase, produtos, campos customizados, última interação)
+- Você tem acesso ao desempenho de cada vendedor (clientes, receita, tarefas, progresso de meta)
 - Fornecer insights acionáveis e sugestões práticas
 - Identificar riscos, oportunidades e tendências
 - Ser direto, objetivo e usar linguagem profissional em português brasileiro
@@ -378,9 +239,9 @@ Seu papel:
 - Os valores de receita são baseados no valor REAL registrado na venda (não o potencial estimado)
 - Sempre que perguntado sobre progresso da meta, informe o percentual atingido e quanto falta
 
-Capacidades especiais:
-- Pode responder sobre QUALQUER cliente específico (dados, interações, produtos, valor, estágio)
-- Pode responder sobre QUALQUER vendedor (desempenho, clientes, tarefas pendentes, timeline)
+Capacidades:
+- Pode responder sobre QUALQUER cliente específico (dados, produtos, valor, estágio, inatividade)
+- Pode responder sobre QUALQUER vendedor (desempenho, clientes, tarefas pendentes)
 - Pode cruzar dados entre vendedores, clientes, produtos e pipeline
 - Pode identificar padrões de comportamento e recomendar ações
 
