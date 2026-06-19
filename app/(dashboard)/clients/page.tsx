@@ -396,7 +396,7 @@ export default function ClientsPage() {
                                     onClick={() => router.push(`/clients/${client.id}`)}
                                 >
                                     {isGestor && (
-                                        <TableCell onClick={(e) => { e.stopPropagation(); toggleSelectOne(client.id); }}>
+                                        <TableCell onClick={(e) => e.stopPropagation()}>
                                             <input
                                                 type="checkbox"
                                                 className="rounded border-gray-300 cursor-pointer"

@@ -39,7 +39,12 @@ export default function PipelinePage() {
         try {
             const response = await fetch("/api/pipeline");
             const data = await response.json();
-            setColumns(data.columns || []);
+            const cols = data.columns || [];
+            const sortedCols = cols.map((col: any) => ({
+                ...col,
+                clients: [...col.clients].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+            }));
+            setColumns(sortedCols);
         } catch (error) {
             toast({
                 variant: "destructive",
@@ -67,6 +72,7 @@ export default function PipelinePage() {
         const newDest = newColumns.find((c) => c.id === destination.droppableId)!;
         const [removed] = newSrc.clients.splice(source.index, 1);
         newDest.clients.splice(destination.index, 0, removed);
+        newDest.clients.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
         setColumns(newColumns);
 
         try {

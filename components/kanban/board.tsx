@@ -39,11 +39,6 @@ export function KanbanBoard({ columns, onDragEnd }: KanbanBoardProps) {
 }
 
 function KanbanColumn({ column }: { column: Column }) {
-    // Alphabetical sort
-    const sortedClients = [...column.clients].sort((a, b) =>
-        a.name.localeCompare(b.name, "pt-BR")
-    );
-
     return (
         <div className="flex-shrink-0 w-80" style={{ height: "calc(100vh - 200px)" }}>
             <Card className="h-full flex flex-col">
@@ -67,7 +62,7 @@ function KanbanColumn({ column }: { column: Column }) {
                             className={`space-y-2 min-h-[200px] overflow-y-auto flex-1 ${snapshot.isDraggingOver ? "bg-gray-50" : ""
                                 }`}
                         >
-                            {sortedClients.map((client, index) => (
+                            {column.clients.map((client, index) => (
                                 <ClientCard key={client.id} client={client} index={index} />
                             ))}
                             {provided.placeholder}
