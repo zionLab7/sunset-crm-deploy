@@ -15,6 +15,19 @@ export async function GET(request: NextRequest) {
         const dbUser = await prisma.user.findUnique({ where: { email: user.email as string } });
         if (!dbUser) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 401 });
 
+        // Auto-update overdue tasks
+        await prisma.task.updateMany({
+            where: {
+                status: "PENDENTE",
+                dueDate: {
+                    lt: new Date()
+                }
+            },
+            data: {
+                status: "ATRASADA"
+            }
+        });
+
         const userId = dbUser.id;
         const userRole = dbUser.role;
 

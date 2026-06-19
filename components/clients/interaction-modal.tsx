@@ -37,6 +37,19 @@ interface SaleData {
     quantity: number;
     saleValue: number;
     notes: string;
+    items?: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        unitPrice: number;
+        markup: number;
+    }>;
+    saleType: "MONTHLY" | "SCHEDULED";
+    deliveries?: Array<{
+        dueDate: string;
+        value: number;
+        markup: number;
+    }>;
 }
 
 interface InteractionModalProps {
@@ -130,6 +143,9 @@ export function InteractionModal({
                     productName: pendingSaleData.productName,
                     quantity: pendingSaleData.quantity,
                     notes: pendingSaleData.notes,
+                    items: pendingSaleData.items || [],
+                    saleType: pendingSaleData.saleType || "MONTHLY",
+                    deliveries: pendingSaleData.deliveries || [],
                 })
                 : undefined;
 

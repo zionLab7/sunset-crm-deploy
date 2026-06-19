@@ -43,11 +43,22 @@ export default function ProductsPage() {
     const [products, setProducts] = useState<Product[]>([]);
     const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDef[]>([]);
     const [loading, setLoading] = useState(true);
+    const [searchInputValue, setSearchInputValue] = useState("");
     const [search, setSearch] = useState("");
     const [modalOpen, setModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
     const isGestor = (session?.user as any)?.role === "GESTOR";
+
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setSearch(searchInputValue);
+        }, 400);
+
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [searchInputValue]);
 
     useEffect(() => {
         fetchProducts();
@@ -207,8 +218,8 @@ export default function ProductsPage() {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                         placeholder="Buscar por nome ou código..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        value={searchInputValue}
+                        onChange={(e) => setSearchInputValue(e.target.value)}
                         className="pl-10"
                     />
                 </div>

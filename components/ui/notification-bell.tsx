@@ -22,6 +22,30 @@ export function NotificationBell() {
     const [open, setOpen] = useState(false);
     const [tasks, setTasks] = useState<TaskNotification[]>([]);
     const [loading, setLoading] = useState(false);
+    const prevTaskIds = useRef<Set<string>>(new Set());
+
+    const playNotificationSound = () => {
+        try {
+            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.type = "sine";
+            oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5 note
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1); // A5 note
+
+            gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.35);
+        } catch (e) {
+            console.warn("Could not play notification sound:", e);
+        }
+    };
 
     const fetchUrgentTasks = async () => {
         setLoading(true);
@@ -29,7 +53,26 @@ export function NotificationBell() {
             const res = await fetch("/api/tasks/urgent");
             if (!res.ok) return;
             const data = await res.json();
-            setTasks(data.tasks || []);
+            const newTasks: TaskNotification[] = data.tasks || [];
+
+            const currentIds = new Set(newTasks.map((t) => t.id));
+
+            // Tocar som de notificação apenas se houver uma nova tarefa urgente
+            if (prevTaskIds.current.size > 0) {
+                let hasNew = false;
+                for (const id of currentIds) {
+                    if (!prevTaskIds.current.has(id)) {
+                        hasNew = true;
+                        break;
+                    }
+                }
+                if (hasNew) {
+                    playNotificationSound();
+                }
+            }
+
+            setTasks(newTasks);
+            prevTaskIds.current = currentIds;
         } catch { } finally {
             setLoading(false);
         }
@@ -37,7 +80,7 @@ export function NotificationBell() {
 
     useEffect(() => {
         fetchUrgentTasks();
-        const interval = setInterval(fetchUrgentTasks, 5 * 60 * 1000);
+        const interval = setInterval(fetchUrgentTasks, 60 * 1000); // Polling a cada 1 minuto
         return () => clearInterval(interval);
     }, []);
 
@@ -76,7 +119,7 @@ export function NotificationBell() {
             >
                 <Bell className="h-5 w-5" />
                 {totalCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold">
+                    <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold animate-pulse">
                         {totalCount > 9 ? "9+" : totalCount}
                     </span>
                 )}
@@ -84,8 +127,8 @@ export function NotificationBell() {
 
             {open && (
                 <div
-                    className="absolute top-full mt-2 w-80 bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-border"
-                    style={{ left: 0, zIndex: 9999 }}
+                    className="absolute top-full mt-2 w-80 bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-border right-0"
+                    style={{ zIndex: 9999 }}
                 >
                     <div className="flex items-center justify-between px-4 py-3 border-b">
                         <div className="flex items-center gap-2">

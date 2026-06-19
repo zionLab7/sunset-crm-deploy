@@ -41,11 +41,14 @@ export async function PATCH(
         }
 
         const body = await request.json();
-        const { type, description } = body;
+        const { type, description, metadata } = body;
 
         const updateData: any = {};
         if (type !== undefined) updateData.type = type;
         if (description !== undefined) updateData.description = description;
+        if (metadata !== undefined) {
+            updateData.metadata = typeof metadata === "string" ? metadata : JSON.stringify(metadata);
+        }
 
         const updated = await prisma.interaction.update({
             where: { id: params.interactionId },

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,13 +16,20 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+} from "@/components/ui/dialog";
+import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, MessageCircle, FileSpreadsheet, Trash2, CheckSquare } from "lucide-react";
+import { Plus, Search, MessageCircle, FileSpreadsheet, Trash2, CheckSquare, ExternalLink, UserCheck } from "lucide-react";
 import { formatCurrency, formatCNPJ, getWhatsAppLink } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ImportClientsModal } from "@/components/clients/import-clients-modal";
@@ -61,6 +69,9 @@ export default function ClientsPage() {
     const [importModalOpen, setImportModalOpen] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [onlyMine, setOnlyMine] = useState(false);
+    const [bulkTransferModalOpen, setBulkTransferModalOpen] = useState(false);
+    const [transferUserId, setTransferUserId] = useState<string>("");
+    const [transferring, setTransferring] = useState(false);
 
 
     useEffect(() => {
@@ -184,6 +195,56 @@ export default function ClientsPage() {
         });
     };
 
+    const handleBulkTransfer = async () => {
+        if (selectedIds.size === 0) return;
+        if (!transferUserId) {
+            toast({
+                variant: "destructive",
+                title: "Selecione um vendedor",
+                description: "Você deve selecionar o vendedor de destino.",
+            });
+            return;
+        }
+
+        setTransferring(true);
+        try {
+            const res = await fetch("/api/clients/bulk-transfer", {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    clientIds: Array.from(selectedIds),
+                    newUserId: transferUserId,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.error || "Erro ao transferir clientes");
+            }
+
+            toast({
+                title: "✅ Clientes transferidos!",
+                description: data.message || `${selectedIds.size} cliente(s) transferido(s) com sucesso.`,
+            });
+
+            setBulkTransferModalOpen(false);
+            setTransferUserId("");
+            setSelectedIds(new Set());
+            fetchData();
+        } catch (err: any) {
+            toast({
+                variant: "destructive",
+                title: "Erro ao transferir clientes",
+                description: err.message,
+            });
+        } finally {
+            setTransferring(false);
+        }
+    };
+
     const toggleSelectAll = () => {
         if (selectedIds.size === filteredClients.length && filteredClients.length > 0) {
             setSelectedIds(new Set());
@@ -221,14 +282,24 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                     {isGestor && selectedIds.size > 0 && (
-                        <Button
-                            variant="destructive"
-                            onClick={handleBulkDelete}
-                            className="flex items-center gap-2"
-                        >
-                            <Trash2 className="h-4 w-4" />
-                            Excluir {selectedIds.size} cliente{selectedIds.size !== 1 ? "s" : ""}
-                        </Button>
+                        <>
+                            <Button
+                                variant="outline"
+                                onClick={() => setBulkTransferModalOpen(true)}
+                                className="flex items-center gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                            >
+                                <UserCheck className="h-4 w-4" />
+                                Transferir {selectedIds.size} cliente{selectedIds.size !== 1 ? "s" : ""}
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={handleBulkDelete}
+                                className="flex items-center gap-2"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                Excluir {selectedIds.size} cliente{selectedIds.size !== 1 ? "s" : ""}
+                            </Button>
+                        </>
                     )}
                     <Button variant="outline" onClick={() => setImportModalOpen(true)}>
                         <FileSpreadsheet className="h-4 w-4 mr-2" />
@@ -334,7 +405,15 @@ export default function ClientsPage() {
                                             />
                                         </TableCell>
                                     )}
-                                    <TableCell className="font-medium">{client.name}</TableCell>
+                                    <TableCell className="font-medium">
+                                        <Link
+                                            href={`/clients/${client.id}`}
+                                            className="hover:underline font-semibold text-primary"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {client.name}
+                                        </Link>
+                                    </TableCell>
                                     <TableCell className="text-muted-foreground">
                                         {client.cnpj ? formatCNPJ(client.cnpj) : "—"}
                                     </TableCell>
@@ -367,6 +446,16 @@ export default function ClientsPage() {
                                                     </Button>
                                                 </a>
                                             )}
+                                            <Link
+                                                href={`/clients/${client.id}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <Button size="sm" variant="ghost" title="Abrir em nova aba">
+                                                    <ExternalLink className="h-4 w-4 text-blue-600" />
+                                                </Button>
+                                            </Link>
                                             {isGestor && (
                                                 <Button
                                                     size="sm"
@@ -402,6 +491,43 @@ export default function ClientsPage() {
                 stages={stages}
                 users={users}
             />
+
+            {/* Modal de Transferência em Lote */}
+            <Dialog open={bulkTransferModalOpen} onOpenChange={setBulkTransferModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Transferir Vendedor em Lote</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <p className="text-sm text-muted-foreground">
+                            Você selecionou <strong>{selectedIds.size}</strong> cliente(s) para transferir. Escolha o vendedor de destino abaixo:
+                        </p>
+                        <div className="grid gap-2">
+                            <label className="text-sm font-medium">Novo Vendedor</label>
+                            <Select value={transferUserId} onValueChange={setTransferUserId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione um vendedor..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {users.map((u) => (
+                                        <SelectItem key={u.id} value={u.id}>
+                                            {u.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setBulkTransferModalOpen(false)} disabled={transferring}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleBulkTransfer} disabled={transferring || !transferUserId} className="bg-blue-600 hover:bg-blue-700">
+                            {transferring ? "Transferindo..." : "Confirmar Transferência"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

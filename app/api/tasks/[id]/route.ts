@@ -48,17 +48,38 @@ export async function PATCH(
         if (title !== undefined) updateData.title = title;
         if (description !== undefined) updateData.description = description || null;
         if (clientId !== undefined) updateData.clientId = clientId || null;
-        if (dueDate !== undefined) updateData.dueDate = new Date(dueDate + "T12:00:00");
+
+        let newDueDate: Date | undefined = undefined;
+        if (dueDate !== undefined) {
+            newDueDate = new Date(dueDate + "T12:00:00");
+            updateData.dueDate = newDueDate;
+        }
+
         if (dueTime !== undefined) updateData.dueTime = dueTime || null;
-        if (status !== undefined) {
-            updateData.status = status;
-            // Auto-set completedAt when marking as done
-            if (status === "CONCLUIDA" && existingTask.status !== "CONCLUIDA") {
+
+        const currentStatus = existingTask.status;
+        const currentDueDate = existingTask.dueDate;
+        const targetDueDate = newDueDate !== undefined ? newDueDate : currentDueDate;
+
+        if (status === "CONCLUIDA") {
+            updateData.status = "CONCLUIDA";
+            if (currentStatus !== "CONCLUIDA") {
                 updateData.completedAt = new Date();
-            } else if (status !== "CONCLUIDA") {
+            }
+        } else {
+            const resolvedStatus = status !== undefined ? status : currentStatus;
+
+            if (resolvedStatus !== "CONCLUIDA") {
                 updateData.completedAt = null;
+                // Se a data do vencimento for anterior ao momento atual, marca como atrasada
+                if (targetDueDate < new Date()) {
+                    updateData.status = "ATRASADA";
+                } else {
+                    updateData.status = "PENDENTE";
+                }
             }
         }
+
         if (userRole === "GESTOR" && assignedUserId !== undefined) {
             updateData.userId = assignedUserId;
         }

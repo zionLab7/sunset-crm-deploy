@@ -13,6 +13,19 @@ export async function GET() {
         const dbUser = await prisma.user.findUnique({ where: { email: user.email as string } });
         if (!dbUser) return NextResponse.json({ error: "Usuário não encontrado" }, { status: 401 });
 
+        // Auto-update overdue tasks
+        await prisma.task.updateMany({
+            where: {
+                status: "PENDENTE",
+                dueDate: {
+                    lt: new Date()
+                }
+            },
+            data: {
+                status: "ATRASADA"
+            }
+        });
+
         const now = new Date();
         const todayEnd = new Date(now);
         todayEnd.setHours(23, 59, 59, 999);

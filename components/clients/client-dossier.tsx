@@ -140,6 +140,10 @@ export function ClientDossier({ client }: ClientDossierProps) {
     const [interactionFilter, setInteractionFilter] = useState<string>("all");
     const [editingInteractionId, setEditingInteractionId] = useState<string | null>(null);
     const [editingDescription, setEditingDescription] = useState("");
+    const [editingSaleValue, setEditingSaleValue] = useState("");
+    const [editingProductName, setEditingProductName] = useState("");
+    const [editingQuantity, setEditingQuantity] = useState("");
+    const [editingSaleNotes, setEditingSaleNotes] = useState("");
     const [savingEdit, setSavingEdit] = useState(false);
     // Clients and users for task modal
     const [taskClients, setTaskClients] = useState<Array<{ id: string; name: string }>>([]);
@@ -501,7 +505,14 @@ export function ClientDossier({ client }: ClientDossierProps) {
                             const Icon = config.icon;
 
                             // Parse sale metadata if present
-                            let saleMeta: { saleValue?: number; productName?: string; quantity?: number; notes?: string } | null = null;
+                            let saleMeta: { 
+                                saleValue?: number; 
+                                productName?: string; 
+                                quantity?: number; 
+                                notes?: string;
+                                saleType?: "MONTHLY" | "SCHEDULED";
+                                deliveries?: Array<{ dueDate: string; value: number; markup: number }>;
+                            } | null = null;
                             if (interaction.metadata) {
                                 try {
                                     const parsed = JSON.parse(interaction.metadata);
@@ -541,6 +552,17 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                                             onClick={() => {
                                                                 setEditingInteractionId(interaction.id);
                                                                 setEditingDescription(interaction.description);
+                                                                if (saleMeta) {
+                                                                    setEditingSaleValue(String(saleMeta.saleValue || ""));
+                                                                    setEditingProductName(saleMeta.productName || "");
+                                                                    setEditingQuantity(String(saleMeta.quantity || ""));
+                                                                    setEditingSaleNotes(saleMeta.notes || "");
+                                                                } else {
+                                                                    setEditingSaleValue("");
+                                                                    setEditingProductName("");
+                                                                    setEditingQuantity("");
+                                                                    setEditingSaleNotes("");
+                                                                }
                                                             }}
                                                         >
                                                             <Edit className="h-3.5 w-3.5" />
@@ -548,13 +570,64 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                                     )}
                                                 </div>
                                                 {editingInteractionId === interaction.id ? (
-                                                    <div className="space-y-2">
-                                                        <textarea
-                                                            value={editingDescription}
-                                                            onChange={(e) => setEditingDescription(e.target.value)}
-                                                            className="w-full border rounded-md p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary"
-                                                            rows={3}
-                                                        />
+                                                    <div className="space-y-3">
+                                                        <div>
+                                                            <label className="text-xs font-semibold text-muted-foreground">Descrição Geral</label>
+                                                            <textarea
+                                                                value={editingDescription}
+                                                                onChange={(e) => setEditingDescription(e.target.value)}
+                                                                className="w-full border rounded-md p-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary mt-1"
+                                                                rows={3}
+                                                            />
+                                                        </div>
+
+                                                        {interaction.metadata && (
+                                                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                                                                <p className="text-xs font-bold text-amber-800">Editar Detalhes da Venda</p>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="text-xs font-medium text-amber-900">Nome do Produto</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={editingProductName}
+                                                                            onChange={(e) => setEditingProductName(e.target.value)}
+                                                                            className="w-full border rounded-md p-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary mt-1 bg-white"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="text-xs font-medium text-amber-900">Quantidade</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            value={editingQuantity}
+                                                                            onChange={(e) => setEditingQuantity(e.target.value)}
+                                                                            className="w-full border rounded-md p-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary mt-1 bg-white"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="text-xs font-medium text-amber-900">Valor da Venda (U$)</label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            value={editingSaleValue}
+                                                                            onChange={(e) => setEditingSaleValue(e.target.value)}
+                                                                            className="w-full border rounded-md p-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary mt-1 bg-white"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="text-xs font-medium text-amber-900">Observações da Venda</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={editingSaleNotes}
+                                                                            onChange={(e) => setEditingSaleNotes(e.target.value)}
+                                                                            className="w-full border rounded-md p-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary mt-1 bg-white"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                         <div className="flex gap-2">
                                                             <Button
                                                                 size="sm"
@@ -562,10 +635,29 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                                                 onClick={async () => {
                                                                     setSavingEdit(true);
                                                                     try {
+                                                                        let newMetadata = undefined;
+                                                                        if (interaction.metadata) {
+                                                                            try {
+                                                                                const parsed = JSON.parse(interaction.metadata);
+                                                                                newMetadata = JSON.stringify({
+                                                                                    ...parsed,
+                                                                                    saleValue: parseFloat(editingSaleValue) || 0,
+                                                                                    productName: editingProductName,
+                                                                                    quantity: parseInt(editingQuantity) || 1,
+                                                                                    notes: editingSaleNotes,
+                                                                                });
+                                                                            } catch {
+                                                                                newMetadata = interaction.metadata;
+                                                                            }
+                                                                        }
+
                                                                         const res = await fetch(`/api/clients/${client.id}/interactions/${interaction.id}`, {
                                                                             method: "PATCH",
                                                                             headers: { "Content-Type": "application/json" },
-                                                                            body: JSON.stringify({ description: editingDescription }),
+                                                                            body: JSON.stringify({
+                                                                                description: editingDescription,
+                                                                                ...(newMetadata !== undefined ? { metadata: newMetadata } : {}),
+                                                                            }),
                                                                         });
                                                                         if (!res.ok) throw new Error();
                                                                         toast({ title: "✅ Interação atualizada" });
@@ -600,23 +692,47 @@ export function ClientDossier({ client }: ClientDossierProps) {
                                                 )}
                                                 {/* Sale metadata card */}
                                                 {saleMeta && (
-                                                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg flex flex-wrap gap-3 text-sm">
-                                                        {saleMeta.productName && (
-                                                            <span className="flex items-center gap-1">
-                                                                <Package className="h-3.5 w-3.5 text-amber-600" />
-                                                                <span className="font-medium">{saleMeta.productName}</span>
-                                                                {saleMeta.quantity && saleMeta.quantity > 1 && (
-                                                                    <span className="text-muted-foreground">× {saleMeta.quantity}</span>
-                                                                )}
-                                                            </span>
+                                                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2 text-sm">
+                                                        <div className="flex flex-wrap gap-3">
+                                                            {saleMeta.productName && (
+                                                                <span className="flex items-center gap-1">
+                                                                    <Package className="h-3.5 w-3.5 text-amber-600" />
+                                                                    <span className="font-medium">{saleMeta.productName}</span>
+                                                                    {saleMeta.quantity && saleMeta.quantity > 1 && (
+                                                                        <span className="text-muted-foreground">× {saleMeta.quantity}</span>
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                            {saleMeta.saleValue != null && (
+                                                                <span className="flex items-center gap-1 font-semibold text-green-700">
+                                                                    💰 {formatCurrency(saleMeta.saleValue)}
+                                                                </span>
+                                                            )}
+                                                            <Badge variant="outline" className="border-amber-300 text-amber-800 bg-amber-100/50 text-[10px]">
+                                                                {saleMeta.saleType === "SCHEDULED" ? "📅 Programação" : "💼 Pedido do Mês"}
+                                                            </Badge>
+                                                        </div>
+
+                                                        {saleMeta.saleType === "SCHEDULED" && saleMeta.deliveries && saleMeta.deliveries.length > 0 && (
+                                                            <div className="mt-2 pt-2 border-t border-amber-200 space-y-1">
+                                                                <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Cronograma de Entregas:</p>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                                                                    {saleMeta.deliveries.map((del, dIdx) => (
+                                                                        <div key={dIdx} className="bg-white dark:bg-zinc-900 border rounded p-1.5 text-xs flex justify-between items-center">
+                                                                            <span>
+                                                                                <strong>{dIdx + 1}ª:</strong> {new Date(del.dueDate + "T12:00:00").toLocaleDateString("pt-BR")}
+                                                                            </span>
+                                                                            <span className="font-semibold text-green-700">
+                                                                                {formatCurrency(del.value)} <span className="text-[9px] text-muted-foreground font-normal">({del.markup}%)</span>
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
                                                         )}
-                                                        {saleMeta.saleValue != null && (
-                                                            <span className="flex items-center gap-1 font-semibold text-green-700">
-                                                                💰 {formatCurrency(saleMeta.saleValue)}
-                                                            </span>
-                                                        )}
+
                                                         {saleMeta.notes && (
-                                                            <span className="w-full text-xs text-muted-foreground italic">{saleMeta.notes}</span>
+                                                            <span className="w-full block text-xs text-muted-foreground italic pt-1">{saleMeta.notes}</span>
                                                         )}
                                                     </div>
                                                 )}
