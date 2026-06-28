@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { SaleModal } from "@/components/pipeline/SaleModal";
+import { SampleModal, type SampleData } from "./SampleModal";
 
 const interactionSchema = z.object({
     description: z.string().optional(),
@@ -74,6 +75,8 @@ export function InteractionModal({
     const [selectedType, setSelectedType] = useState<InteractionType | null>(null);
     const [saleModalOpen, setSaleModalOpen] = useState(false);
     const [pendingSaleData, setPendingSaleData] = useState<SaleData | null>(null);
+    const [sampleModalOpen, setSampleModalOpen] = useState(false);
+    const [pendingSampleData, setPendingSampleData] = useState<SampleData | null>(null);
     const [promptTask, setPromptTask] = useState(false);
 
     const { register, handleSubmit, reset, formState: { errors } } = useForm<InteractionFormData>({
@@ -86,6 +89,7 @@ export function InteractionModal({
             reset();
             setSelectedType(null);
             setPendingSaleData(null);
+            setPendingSampleData(null);
             setPromptTask(false);
         }
     }, [open, reset]);
@@ -109,8 +113,11 @@ export function InteractionModal({
     const handleTypeSelect = (type: InteractionType) => {
         setSelectedType(type);
         setPendingSaleData(null);
+        setPendingSampleData(null);
         if (type.isSaleType) {
             setSaleModalOpen(true);
+        } else if (type.name === "Amostra") {
+            setSampleModalOpen(true);
         }
     };
 
@@ -124,6 +131,16 @@ export function InteractionModal({
         if (selectedType?.isSaleType) setSelectedType(null);
     };
 
+    const handleSampleConfirm = (sampleData: SampleData) => {
+        setPendingSampleData(sampleData);
+        setSampleModalOpen(false);
+    };
+
+    const handleSampleCancel = () => {
+        setSampleModalOpen(false);
+        if (selectedType?.name === "Amostra") setSelectedType(null);
+    };
+
     const onSubmit = async (data: InteractionFormData) => {
         if (!selectedType) {
             toast({ variant: "destructive", title: "Selecione um tipo de interação" });
@@ -133,11 +150,18 @@ export function InteractionModal({
             setSaleModalOpen(true);
             return;
         }
+        if (selectedType.name === "Amostra" && !pendingSampleData) {
+            setSampleModalOpen(true);
+            return;
+        }
 
         setLoading(true);
         try {
-            const metadata = pendingSaleData
-                ? JSON.stringify({
+            let metadata = undefined;
+            let description = data.description || "";
+
+            if (pendingSaleData) {
+                metadata = JSON.stringify({
                     saleValue: pendingSaleData.saleValue,
                     productId: pendingSaleData.productId,
                     productName: pendingSaleData.productName,
@@ -146,8 +170,18 @@ export function InteractionModal({
                     items: pendingSaleData.items || [],
                     saleType: pendingSaleData.saleType || "MONTHLY",
                     deliveries: pendingSaleData.deliveries || [],
-                })
-                : undefined;
+                });
+            } else if (pendingSampleData) {
+                metadata = JSON.stringify({
+                    productId: pendingSampleData.productId,
+                    productName: pendingSampleData.productName,
+                    quantity: pendingSampleData.quantity,
+                    unit: pendingSampleData.unit,
+                    batchNumber: pendingSampleData.batchNumber,
+                    manufacturer: pendingSampleData.manufacturer,
+                });
+                description = `Amostra enviada: ${pendingSampleData.productName} (${pendingSampleData.quantity}${pendingSampleData.unit}), Lote: ${pendingSampleData.batchNumber}, Fabricante: ${pendingSampleData.manufacturer}.\n${description}`.trim();
+            }
 
             const res = await fetch(`/api/clients/${clientId}/interactions`, {
                 method: "POST",
@@ -155,7 +189,7 @@ export function InteractionModal({
                 body: JSON.stringify({
                     clientId,
                     type: selectedType.name,
-                    description: data.description,
+                    description,
                     metadata,
                 }),
             });
@@ -247,6 +281,12 @@ export function InteractionModal({
                                         <button type="button" onClick={() => setSaleModalOpen(true)} className="underline ml-2">editar</button>
                                     </div>
                                 )}
+                                {selectedType?.name === "Amostra" && pendingSampleData && (
+                                    <div className="mt-2 p-2 bg-indigo-50 border border-indigo-200 rounded-md text-xs text-indigo-700 flex items-center justify-between">
+                                        <span>🧪 Amostra: {pendingSampleData.productName} ({pendingSampleData.quantity}{pendingSampleData.unit}) — Lote: {pendingSampleData.batchNumber}</span>
+                                        <button type="button" onClick={() => setSampleModalOpen(true)} className="underline ml-2">editar</button>
+                                    </div>
+                                )}
                             </div>
 
                             <div>
@@ -282,6 +322,13 @@ export function InteractionModal({
                 stageName="Interação de Venda"
                 onConfirm={handleSaleConfirm}
                 onCancel={handleSaleCancel}
+            />
+
+            <SampleModal
+                open={sampleModalOpen}
+                clientName={clientName}
+                onConfirm={handleSampleConfirm}
+                onCancel={handleSampleCancel}
             />
         </>
     );

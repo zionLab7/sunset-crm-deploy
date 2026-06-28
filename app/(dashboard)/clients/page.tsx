@@ -74,9 +74,11 @@ export default function ClientsPage() {
     const [transferring, setTransferring] = useState(false);
 
 
+    const [selectedUser, setSelectedUser] = useState<string>("all");
+
     useEffect(() => {
         fetchData();
-    }, [selectedStage]);
+    }, [selectedStage, selectedUser]);
 
     const fetchData = async () => {
         try {
@@ -94,6 +96,9 @@ export default function ClientsPage() {
             const params = new URLSearchParams();
             if (selectedStage !== "all") {
                 params.append("stageId", selectedStage);
+            }
+            if (selectedUser !== "all") {
+                params.append("assignedUserId", selectedUser);
             }
 
             const clientsRes = await fetch(`/api/clients?${params}`);
@@ -323,12 +328,27 @@ export default function ClientsPage() {
                         className="pl-10"
                     />
                 </div>
+                {isGestor && (
+                    <Select value={selectedUser} onValueChange={setSelectedUser}>
+                        <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="Por Vendedor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos os vendedores</SelectItem>
+                            {users.map((u) => (
+                                <SelectItem key={u.id} value={u.id}>
+                                    {u.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
                 <Select value={selectedStage} onValueChange={setSelectedStage}>
                     <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Todos os estágios" />
+                        <SelectValue placeholder="Status (Fases)" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">Todos os estágios</SelectItem>
+                        <SelectItem value="all">Todos os status (Fases)</SelectItem>
                         {stages.map((stage) => (
                             <SelectItem key={stage.id} value={stage.id}>
                                 {stage.name}
@@ -336,14 +356,16 @@ export default function ClientsPage() {
                         ))}
                     </SelectContent>
                 </Select>
-                <Button
-                    variant={onlyMine ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setOnlyMine(!onlyMine)}
-                    className="whitespace-nowrap"
-                >
-                    {onlyMine ? "✓ Meus Clientes" : "Meus Clientes"}
-                </Button>
+                {!isGestor && (
+                    <Button
+                        variant={onlyMine ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setOnlyMine(!onlyMine)}
+                        className="whitespace-nowrap"
+                    >
+                        {onlyMine ? "✓ Meus Clientes" : "Meus Clientes"}
+                    </Button>
+                )}
             </div>
 
             {/* Tabela */}

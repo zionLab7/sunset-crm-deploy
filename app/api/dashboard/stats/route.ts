@@ -50,13 +50,13 @@ export async function GET() {
             select: { metadata: true },
         });
 
-        // Sum up actual sale values from metadata
+        // Sum up actual sale values from metadata (excluding SCHEDULED/Vendas Programadas)
         let currentValue = 0;
         for (const interaction of saleInteractions) {
             if (interaction.metadata) {
                 try {
                     const meta = JSON.parse(interaction.metadata);
-                    if (meta.saleValue != null) {
+                    if (meta.saleValue != null && meta.saleType !== "SCHEDULED") {
                         currentValue += parseFloat(String(meta.saleValue));
                     }
                 } catch { /* ignore invalid JSON */ }

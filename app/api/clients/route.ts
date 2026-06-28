@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
         const searchParams = request.nextUrl.searchParams;
         const search = searchParams.get("search");
         const stageId = searchParams.get("stageId");
+        const assignedUserId = searchParams.get("assignedUserId");
 
         // Construir where clause
         const where: any = {};
@@ -29,6 +30,10 @@ export async function GET(request: NextRequest) {
         //     where.assignedUserId = userId;
         // }
 
+        // Filtro por vendedor (atribuído)
+        if (assignedUserId && assignedUserId !== "all") {
+            where.assignedUserId = assignedUserId;
+        }
 
         // Filtro de busca (nome ou CNPJ)
         if (search) {

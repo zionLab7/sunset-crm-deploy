@@ -357,8 +357,8 @@ export function SaleModal({
                                 )}
                             </div>
 
-                            {/* Quantidade, Preço Base, Markup e Preço Final */}
-                            <div className="grid grid-cols-2 gap-3 mt-2">
+                            {/* Quantidade, Markup e Preço Final */}
+                            <div className="grid grid-cols-3 gap-3 mt-2">
                                 <div>
                                     <Label className="text-xs">Quantidade *</Label>
                                     <Input
@@ -368,21 +368,6 @@ export function SaleModal({
                                         onChange={(e) => handleUpdateItem(index, "quantity", e.target.value)}
                                         className="mt-1 text-sm"
                                     />
-                                </div>
-                                <div>
-                                    <Label className="text-xs">Preço Base (U$)</Label>
-                                    <div className="relative mt-1">
-                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">U$</span>
-                                        <Input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={item.basePrice}
-                                            onChange={(e) => handleUpdateItem(index, "basePrice", e.target.value)}
-                                            placeholder="0.00"
-                                            className="pl-8 text-sm"
-                                        />
-                                    </div>
                                 </div>
                                 <div>
                                     <Label className="text-xs">Markup negociado (%)</Label>

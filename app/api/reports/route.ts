@@ -60,6 +60,7 @@ export async function GET(request: Request) {
             if (!interaction.metadata) continue;
             try {
                 const meta = JSON.parse(interaction.metadata);
+                if (meta.saleType === "SCHEDULED") continue; // Excluir Vendas Programadas
                 const val = parseFloat(String(meta.saleValue || 0));
                 if (val > 0) {
                     clientSaleMap.set(interaction.clientId, (clientSaleMap.get(interaction.clientId) || 0) + val);
@@ -126,6 +127,7 @@ export async function GET(request: Request) {
             }).reduce((sum, interaction) => {
                 try {
                     const meta = JSON.parse(interaction.metadata || "{}");
+                    if (meta.saleType === "SCHEDULED") return sum;
                     return sum + (parseFloat(String(meta.saleValue || 0)) > 0 ? 1 : 0);
                 } catch { return sum; }
             }, 0);
