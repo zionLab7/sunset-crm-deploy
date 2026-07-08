@@ -36,13 +36,21 @@ export async function GET(request: Request) {
         // Guarantee "Venda" is always included as fallback
         if (!saleTypeNames.includes("Venda")) saleTypeNames.push("Venda");
 
-        // ✅ Fetch ALL sale interactions in the period (by type name + saleValue in metadata)
-        // No pipeline stage filtering — sales come solely from registered interactions
+        // ✅ Fetch MONTHLY sale interactions in the period
         const allSaleInteractions = await prisma.interaction.findMany({
             where: {
                 type: { in: saleTypeNames },
                 metadata: { contains: "saleValue" },
                 createdAt: { gte: startDate, lte: now },
+            },
+            select: { id: true, clientId: true, userId: true, metadata: true, createdAt: true },
+        });
+
+        // ✅ Fetch ALL SCHEDULED sale interactions (no date filter — we use delivery dueDate)
+        const scheduledSaleInteractions = await prisma.interaction.findMany({
+            where: {
+                type: { in: saleTypeNames },
+                metadata: { contains: "SCHEDULED" },
             },
             select: { id: true, clientId: true, userId: true, metadata: true, createdAt: true },
         });
@@ -56,17 +64,42 @@ export async function GET(request: Request) {
 
         let totalVendasGeral = 0;
 
+        // Helper to accumulate sale value into maps
+        const addSaleValue = (clientId: string, oderId: string, val: number) => {
+            clientSaleMap.set(clientId, (clientSaleMap.get(clientId) || 0) + val);
+            userSaleMap.set(oderId, (userSaleMap.get(oderId) || 0) + val);
+            clientsWithSales.add(clientId);
+            totalVendasGeral += val;
+        };
+
+        // Sum MONTHLY sales (exclude SCHEDULED)
         for (const interaction of allSaleInteractions) {
             if (!interaction.metadata) continue;
             try {
                 const meta = JSON.parse(interaction.metadata);
-                if (meta.saleType === "SCHEDULED") continue; // Excluir Vendas Programadas
+                if (meta.saleType === "SCHEDULED") continue;
                 const val = parseFloat(String(meta.saleValue || 0));
                 if (val > 0) {
-                    clientSaleMap.set(interaction.clientId, (clientSaleMap.get(interaction.clientId) || 0) + val);
-                    userSaleMap.set(interaction.userId, (userSaleMap.get(interaction.userId) || 0) + val);
-                    clientsWithSales.add(interaction.clientId);
-                    totalVendasGeral += val;
+                    addSaleValue(interaction.clientId, interaction.userId, val);
+                }
+            } catch { /* ignore */ }
+        }
+
+        // Sum SCHEDULED deliveries whose dueDate falls within the report period
+        for (const interaction of scheduledSaleInteractions) {
+            if (!interaction.metadata) continue;
+            try {
+                const meta = JSON.parse(interaction.metadata);
+                if (meta.saleType !== "SCHEDULED" || !meta.deliveries) continue;
+                for (const delivery of meta.deliveries) {
+                    if (!delivery.dueDate) continue;
+                    const dueDate = new Date(delivery.dueDate + "T00:00:00");
+                    if (dueDate >= startDate && dueDate <= now) {
+                        const val = parseFloat(String(delivery.value || 0));
+                        if (val > 0) {
+                            addSaleValue(interaction.clientId, interaction.userId, val);
+                        }
+                    }
                 }
             } catch { /* ignore */ }
         }
@@ -116,13 +149,15 @@ export async function GET(request: Request) {
             color: stage.color,
         }));
 
-        // ✅ Sales per day — from sale interactions
+        // ✅ Sales per day — from sale interactions + scheduled deliveries
         const vendasPorDia: { date: string; vendas: number }[] = [];
         for (let i = 29; i >= 0; i--) {
             const date = new Date();
             date.setDate(now.getDate() - i);
             const dateStr = date.toISOString().split("T")[0];
-            const vendasNoDia = allSaleInteractions.filter(interaction => {
+
+            // Count MONTHLY sales by createdAt
+            let vendasNoDia = allSaleInteractions.filter(interaction => {
                 return interaction.createdAt.toISOString().split("T")[0] === dateStr;
             }).reduce((sum, interaction) => {
                 try {
@@ -131,6 +166,23 @@ export async function GET(request: Request) {
                     return sum + (parseFloat(String(meta.saleValue || 0)) > 0 ? 1 : 0);
                 } catch { return sum; }
             }, 0);
+
+            // Count SCHEDULED deliveries by dueDate
+            for (const interaction of scheduledSaleInteractions) {
+                if (!interaction.metadata) continue;
+                try {
+                    const meta = JSON.parse(interaction.metadata);
+                    if (meta.saleType !== "SCHEDULED" || !meta.deliveries) continue;
+                    for (const delivery of meta.deliveries) {
+                        if (!delivery.dueDate) continue;
+                        if (delivery.dueDate === dateStr) {
+                            const val = parseFloat(String(delivery.value || 0));
+                            if (val > 0) vendasNoDia++;
+                        }
+                    }
+                } catch { /* ignore */ }
+            }
+
             vendasPorDia.push({ date: dateStr, vendas: vendasNoDia });
         }
 

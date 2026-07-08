@@ -38,9 +38,10 @@ export async function GET() {
         // Start of current month
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-        // Fetch interactions this month that are sale types with a saleValue in metadata
-        const saleInteractions = await prisma.interaction.findMany({
+        // Fetch MONTHLY sale interactions created this month
+        const monthlySaleInteractions = await prisma.interaction.findMany({
             where: {
                 type: { in: saleTypeNames },
                 metadata: { contains: "saleValue" },
@@ -50,14 +51,42 @@ export async function GET() {
             select: { metadata: true },
         });
 
-        // Sum up actual sale values from metadata (excluding SCHEDULED/Vendas Programadas)
+        // Fetch ALL SCHEDULED sale interactions (no date filter on createdAt — we filter by delivery dueDate)
+        const scheduledSaleInteractions = await prisma.interaction.findMany({
+            where: {
+                type: { in: saleTypeNames },
+                metadata: { contains: "SCHEDULED" },
+                ...(userRole === "GESTOR" ? {} : { userId }),
+            },
+            select: { metadata: true },
+        });
+
         let currentValue = 0;
-        for (const interaction of saleInteractions) {
+
+        // Sum MONTHLY sales (exclude SCHEDULED from this query)
+        for (const interaction of monthlySaleInteractions) {
             if (interaction.metadata) {
                 try {
                     const meta = JSON.parse(interaction.metadata);
                     if (meta.saleValue != null && meta.saleType !== "SCHEDULED") {
                         currentValue += parseFloat(String(meta.saleValue));
+                    }
+                } catch { /* ignore invalid JSON */ }
+            }
+        }
+
+        // Sum SCHEDULED deliveries whose dueDate falls within current month
+        for (const interaction of scheduledSaleInteractions) {
+            if (interaction.metadata) {
+                try {
+                    const meta = JSON.parse(interaction.metadata);
+                    if (meta.saleType !== "SCHEDULED" || !meta.deliveries) continue;
+                    for (const delivery of meta.deliveries) {
+                        if (!delivery.dueDate) continue;
+                        const dueDate = new Date(delivery.dueDate + "T00:00:00");
+                        if (dueDate >= startOfMonth && dueDate <= endOfMonth) {
+                            currentValue += parseFloat(String(delivery.value || 0));
+                        }
                     }
                 } catch { /* ignore invalid JSON */ }
             }
