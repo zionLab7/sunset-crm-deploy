@@ -96,6 +96,46 @@ async function getBusinessContext() {
         where: { createdAt: { gte: thirtyDaysAgo } },
     });
 
+    // 8. Vendas Programadas
+    let saleTypeNames: string[] = [];
+    try {
+        const saleTypes = await (prisma as any).interactionTypeConfig.findMany({
+            where: { isSaleType: true },
+            select: { name: true },
+        });
+        saleTypeNames = saleTypes.map((t: any) => t.name);
+    } catch {
+        saleTypeNames = ["Venda"];
+    }
+
+    const scheduledInteractions = await prisma.interaction.findMany({
+        where: {
+            type: { in: saleTypeNames },
+            metadata: { contains: "SCHEDULED" },
+        },
+        include: {
+            client: { select: { name: true } },
+            user: { select: { name: true } },
+        },
+    });
+
+    const vendasProgramadas = scheduledInteractions
+        .map((i) => {
+            try {
+                const meta = JSON.parse(i.metadata || "{}");
+                if (meta.saleType !== "SCHEDULED" || !meta.deliveries) return null;
+                return {
+                    cliente: i.client.name,
+                    vendedor: i.user.name,
+                    dataRegistro: i.createdAt.toISOString().split("T")[0],
+                    valorTotal: meta.saleValue,
+                    itens: (meta.items || []).map((it: any) => `${it.productName} (x${it.quantity})`).join(", ") || "—",
+                    entregas: (meta.deliveries || []).map((d: any) => `${d.dueDate}: U$ ${parseFloat(String(d.value || 0)).toFixed(2)}`).join(" | "),
+                };
+            } catch { return null; }
+        })
+        .filter(Boolean);
+
     // ============ HELPERS ============
     function getSaleValue(interactions: Array<{ metadata: string | null }>, potentialValue: number): number {
         for (const i of interactions) {
@@ -221,6 +261,9 @@ ${JSON.stringify(productsContext)}
 
 --- GESTORES ---
 ${JSON.stringify(gestores)}
+
+--- VENDAS PROGRAMADAS ---
+${vendasProgramadas.length > 0 ? JSON.stringify(vendasProgramadas, null, 1) : "Nenhuma venda programada registrada."}
 `;
 }
 
@@ -243,6 +286,8 @@ Capacidades:
 - Pode responder sobre QUALQUER cliente específico (dados, produtos, valor, estágio, inatividade)
 - Pode responder sobre QUALQUER vendedor (desempenho, clientes, tarefas pendentes)
 - Pode cruzar dados entre vendedores, clientes, produtos e pipeline
+- Pode responder sobre VENDAS PROGRAMADAS: valor, cliente, vendedor, datas de entrega e status
+- Quando perguntado sobre vendas programadas, liste-as com cliente, valor total, e datas de entrega
 - Pode identificar padrões de comportamento e recomendar ações
 
 Personalidade: Profissional, analítico, proativo. Você antecipa problemas e sugere soluções.

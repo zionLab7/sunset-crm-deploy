@@ -13,14 +13,30 @@ import { Button } from "@/components/ui/button";
 import { VendedoresRanking } from "@/components/reports/VendedoresRanking";
 import { FunnelChart } from "@/components/reports/FunnelChart";
 import { VendasTimeline } from "@/components/reports/VendasTimeline";
-import { Download, FileBarChart2, TrendingUp, Users, DollarSign } from "lucide-react";
+import { Download, FileBarChart2, TrendingUp, Users, DollarSign, CalendarDays } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+
+interface ScheduledDelivery {
+    dueDate: string;
+    value: number;
+}
+
+interface VendaProgramada {
+    id: string;
+    clientName: string;
+    vendedorName: string;
+    createdAt: string;
+    totalValue: number;
+    items: { productName: string; quantity: number }[];
+    deliveries: ScheduledDelivery[];
+}
 
 interface ReportsData {
     vendedoresRanking: any[];
     funnelData: any[];
     vendasPorDia: any[];
+    vendasProgramadas: VendaProgramada[];
     metricas: {
         totalClientes: number;
         clientesAtivos: number;
@@ -210,6 +226,92 @@ export default function ReportsPage() {
                     </div>
 
                     <VendasTimeline data={data.vendasPorDia} />
+
+                    {/* Vendas Programadas */}
+                    {data.vendasProgramadas && data.vendasProgramadas.length > 0 && (
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+                                <div>
+                                    <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                                        <CalendarDays className="h-5 w-5 text-blue-500" />
+                                        📅 Vendas Programadas
+                                    </CardTitle>
+                                    <p className="text-sm text-muted-foreground mt-1">
+                                        {data.vendasProgramadas.length} venda(s) programada(s) registrada(s)
+                                    </p>
+                                </div>
+                                <span className="text-sm font-medium text-blue-600 bg-blue-50 dark:bg-blue-950 px-3 py-1 rounded-full">
+                                    Total: {formatCurrency(data.vendasProgramadas.reduce((sum, v) => sum + v.totalValue, 0))}
+                                </span>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b text-left">
+                                                <th className="pb-3 font-medium text-muted-foreground">Cliente</th>
+                                                <th className="pb-3 font-medium text-muted-foreground">Vendedor</th>
+                                                <th className="pb-3 font-medium text-muted-foreground">Registrado em</th>
+                                                <th className="pb-3 font-medium text-muted-foreground">Produtos</th>
+                                                <th className="pb-3 font-medium text-muted-foreground">Entregas</th>
+                                                <th className="pb-3 font-medium text-muted-foreground text-right">Valor Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {data.vendasProgramadas.map((vp) => (
+                                                <tr key={vp.id} className="hover:bg-muted/30 transition-colors">
+                                                    <td className="py-3 font-medium">{vp.clientName}</td>
+                                                    <td className="py-3 text-muted-foreground">{vp.vendedorName}</td>
+                                                    <td className="py-3 text-muted-foreground">
+                                                        {new Date(vp.createdAt).toLocaleDateString("pt-BR")}
+                                                    </td>
+                                                    <td className="py-3">
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {vp.items.map((item, idx) => (
+                                                                <span key={idx} className="text-xs bg-muted px-2 py-0.5 rounded">
+                                                                    {item.productName} (x{item.quantity})
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3">
+                                                        <div className="flex flex-col gap-1">
+                                                            {vp.deliveries.map((d, idx) => {
+                                                                const isPast = new Date(d.dueDate + "T23:59:59") < new Date();
+                                                                return (
+                                                                    <div key={idx} className="flex items-center gap-2 text-xs">
+                                                                        <span className={`inline-block w-2 h-2 rounded-full ${
+                                                                            isPast ? "bg-green-500" : "bg-amber-500"
+                                                                        }`} />
+                                                                        <span className="text-muted-foreground">
+                                                                            {new Date(d.dueDate + "T00:00:00").toLocaleDateString("pt-BR")}
+                                                                        </span>
+                                                                        <span className="font-medium">
+                                                                            {formatCurrency(d.value)}
+                                                                        </span>
+                                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                                                            isPast
+                                                                                ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                                                                                : "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                                                                        }`}>
+                                                                            {isPast ? "Entregue" : "Pendente"}
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 text-right font-semibold">
+                                                        {formatCurrency(vp.totalValue)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </>
             )}
         </div>

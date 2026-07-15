@@ -55,6 +55,18 @@ export async function GET(request: Request) {
             select: { id: true, clientId: true, userId: true, metadata: true, createdAt: true },
         });
 
+        // ✅ Fetch client and user names for scheduled sale interactions
+        const schedClientIds = [...new Set(scheduledSaleInteractions.map(i => i.clientId))];
+        const schedUserIds = [...new Set(scheduledSaleInteractions.map(i => i.userId))];
+        const schedClients = schedClientIds.length > 0
+            ? await prisma.client.findMany({ where: { id: { in: schedClientIds } }, select: { id: true, name: true } })
+            : [];
+        const schedUsers = schedUserIds.length > 0
+            ? await prisma.user.findMany({ where: { id: { in: schedUserIds } }, select: { id: true, name: true } })
+            : [];
+        const schedClientNameMap = new Map(schedClients.map(c => [c.id, c.name]));
+        const schedUserNameMap = new Map(schedUsers.map(u => [u.id, u.name]));
+
         // Build a map: clientId -> total sale value
         const clientSaleMap = new Map<string, number>();
         // Build a map: userId -> total sale value (for ranking)
@@ -103,6 +115,30 @@ export async function GET(request: Request) {
                 }
             } catch { /* ignore */ }
         }
+
+        // ✅ Build vendasProgramadas from scheduled sale interactions
+        const startDateStr = startDate.toISOString().split("T")[0];
+        const vendasProgramadas = scheduledSaleInteractions
+            .map(interaction => {
+                try {
+                    const meta = JSON.parse(interaction.metadata || "{}");
+                    if (meta.saleType !== "SCHEDULED" || !meta.deliveries) return null;
+                    const filteredDeliveries = (meta.deliveries as any[]).filter(
+                        (d: any) => d.dueDate && d.dueDate >= startDateStr
+                    );
+                    if (filteredDeliveries.length === 0) return null;
+                    return {
+                        id: interaction.id,
+                        clientName: schedClientNameMap.get(interaction.clientId) || "Desconhecido",
+                        vendedorName: schedUserNameMap.get(interaction.userId) || "Desconhecido",
+                        createdAt: interaction.createdAt.toISOString(),
+                        totalValue: parseFloat(String(meta.saleValue || 0)),
+                        items: meta.items || [],
+                        deliveries: filteredDeliveries.map((d: any) => ({ dueDate: d.dueDate, value: parseFloat(String(d.value || 0)) })),
+                    };
+                } catch { return null; }
+            })
+            .filter(Boolean);
 
         // ✅ Vendor ranking — based purely on sale interactions
         const vendedores = await prisma.user.findMany({
@@ -199,6 +235,7 @@ export async function GET(request: Request) {
             vendedoresRanking,
             funnelData,
             vendasPorDia,
+            vendasProgramadas,
             metricas: {
                 totalClientes,
                 clientesAtivos,
