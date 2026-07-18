@@ -50,6 +50,8 @@ export default async function DashboardPage() {
         if (interaction.metadata) {
             try {
                 const meta = JSON.parse(interaction.metadata);
+                // Vendas programadas NÃO contam na meta do mês atual
+                if (meta.saleType === "SCHEDULED") continue;
                 const val = parseFloat(String(meta.saleValue || 0));
                 if (val > 0) currentValue += val;
             } catch { /* ignore */ }
